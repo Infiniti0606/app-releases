@@ -1,1 +1,1 @@
-# scribe-loom-releases
+# app-releases
