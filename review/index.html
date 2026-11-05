@@ -1,0 +1,1212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Review</title>
+<!--
+  The reviewer's page for client review links (roadmap Phase 9.5). One file, no build step: it's hosted as it is
+  (with the cloud's address filled in by `npm run build:review-page`) and served by the app itself for testing.
+  The link carries the review's id and secret after the #, which never reaches any server but the cloud's.
+  Shapes and comments match src/shared/review.ts.
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f5f4; --panel: #ffffff; --text: #1c1c1c; --muted: #66625e; --line: #e2e0dd; --soft: #efeeec;
+    --accent: #262626; --on-accent: #ffffff; --accent-soft: #e8e8e8; --note: #fff8e1; --note-line: #f2c94c;
+    --red: #d93a3a; --good: #2f7d3a; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #161616; --panel: #212121; --text: #ededed; --muted: #a3a09c; --line: #343434; --soft: #2a2a2a;
+      --accent: #ededed; --on-accent: #0b0b0b; --accent-soft: #3a3a3a; --note: #3a3220; --note-line: #b8952f;
+      --red: #ef6461; --good: #6cc47a; --shadow: 0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; }
+  button:hover { background: var(--soft); }
+  button:disabled { opacity: .5; cursor: default; }
+  .primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+  .primary:hover { background: var(--accent); filter: brightness(1.15); }
+  .link { border: 0; background: none; padding: 0; color: var(--muted); text-decoration: underline; }
+  .link:hover { background: none; color: var(--text); }
+  textarea, input[type=text] { width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  textarea { resize: vertical; min-height: 64px; }
+  textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  [hidden] { display: none !important; }
+
+  header.top { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header.top h1 { font-size: 18px; margin: 0; flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+  header.top .from { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+  .me { font-size: 13px; color: var(--muted); }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 22vw, 380px); gap: 16px; padding: 16px; margin: 0 auto; align-items: start; }
+  .stage, .side { background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); }
+  .stage { padding: 16px; min-width: 0; }
+  .side { position: sticky; top: 16px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; min-width: 0; }
+
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .switch { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .switch button { border: 0; border-radius: 0; }
+  .switch .on { background: var(--accent); color: var(--on-accent); }
+  .tools { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+  .tools .tool { min-width: 40px; padding: 6px 10px; }
+  .tools .tool.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .tools .sep { width: 1px; height: 24px; background: var(--line); margin: 0 6px; }
+  .swatch { width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
+  .swatch.on { box-shadow: 0 0 0 2px var(--accent); }
+  .hint { color: var(--muted); font-size: 13px; margin: 0; }
+
+  .framewrap { position: relative; }
+  .frame { display: block; overflow: auto; overscroll-behavior: contain; background: var(--soft); border-radius: 8px; padding: 8px; }
+  .picture { position: relative; margin: 0 auto; aspect-ratio: var(--ar); max-width: none; }
+  .picture.pannable { cursor: grab; }
+  .picture.panning { cursor: grabbing; }
+  .zoombar { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 10px;
+    background: var(--panel); box-shadow: var(--shadow); border: 1px solid var(--line); z-index: 2; }
+  /* On the video, the zoom buttons sit at the top so the video's own controls stay clear. */
+  .framewrap.video .zoombar { top: 14px; bottom: auto; }
+  .zoombar button { border: 0; min-width: 34px; height: 32px; padding: 0 8px; font-size: 16px; }
+  .zoombar span { min-width: 46px; text-align: center; font-size: 13px; color: var(--muted); }
+  .picture img, .picture video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 4px; background: #000; }
+  .picture img { background: none; user-select: none; -webkit-user-drag: none; }
+  .picture svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .picture.drawing svg { pointer-events: auto; cursor: crosshair; }
+  .picture svg .mark { pointer-events: visiblePainted; cursor: move; }
+  .picture svg .hit { pointer-events: stroke; }
+  .picture svg .hitfill { pointer-events: all; }
+  .empty { padding: 48px 16px; text-align: center; color: var(--muted); }
+
+  .blips { margin: 10px 4px 0; }
+  .blipline { position: relative; height: 26px; border-radius: 6px; background: var(--soft); cursor: pointer; }
+  .blipline .played { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-soft); border-radius: 6px 0 0 6px; pointer-events: none; }
+  .blipline .tick { position: absolute; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; background: var(--muted); opacity: .5; pointer-events: none; }
+  .blipline .blip { position: absolute; top: 3px; width: 20px; height: 20px; margin-left: -10px; padding: 0; border: 2px solid var(--panel);
+    border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .blipline .blip:hover, .blipline .blip.on { transform: scale(1.25); z-index: 1; }
+  .blipline .head { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--text); pointer-events: none; }
+  .blips .hint { margin-top: 4px; }
+  .stepbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 4px; }
+  .caption { display: flex; gap: 10px; align-items: flex-start; font-size: 16px; margin: 8px 0 0; }
+  .num { flex: none; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 13px; background: var(--red); color: #fff; font-size: 14px; font-weight: 700; line-height: 26px; text-align: center; }
+  .noteicon { flex: none; }
+
+  .composer { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+  .unsaved { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px;
+    background: var(--note); border-left: 4px solid var(--note-line); font-size: 14px; }
+  .unsaved span { flex: 1 1 240px; }
+  .marks { display: grid; gap: 6px; }
+  .markrow { display: flex; gap: 8px; align-items: center; padding: 4px; border-radius: 8px; border: 2px solid transparent; }
+  .markrow.on { border-color: var(--accent); }
+  .markrow input { flex: 1; min-width: 0; }
+  .marknum { flex: none; width: 26px; height: 26px; border-radius: 13px; color: #fff; font-weight: 700; font-size: 13px; line-height: 26px; text-align: center; }
+  .markkind { flex: none; width: 76px; font-size: 13px; color: var(--muted); }
+  .markrow .del { flex: none; padding: 4px 8px; }
+  .composer label.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .target { font-weight: 600; }
+
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; border: 0; border-radius: 0; background: none; padding: 12px; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .list { overflow: auto; padding: 8px; flex: 1; }
+  .item { display: flex; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; }
+  .item:hover { background: var(--soft); }
+  .item.on { border-color: var(--accent); }
+  .item img { width: 96px; height: 60px; object-fit: cover; border-radius: 4px; flex: none; background: var(--soft); }
+  .item .text { font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+  .badge { display: inline-block; font-size: 12px; background: var(--accent-soft); border-radius: 10px; padding: 0 8px; margin-top: 4px; }
+
+  .comment { padding: 10px; border-radius: 8px; border: 2px solid transparent; margin-bottom: 6px; background: var(--bg); }
+  .comment.on { border-color: var(--accent); }
+  .comment .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .comment .who { font-weight: 600; color: var(--text); }
+  .comment .where { cursor: pointer; background: var(--accent-soft); border-radius: 10px; padding: 0 8px; }
+  .comment p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .suggest { margin-top: 6px; padding: 6px 8px; border-left: 3px solid var(--good); background: var(--panel); border-radius: 4px; font-size: 14px; white-space: pre-wrap; }
+  .suggest b { display: block; font-size: 12px; color: var(--good); }
+  .replies { margin: 6px 0 0 12px; padding-left: 10px; border-left: 2px solid var(--line); }
+  .replies .comment { background: none; padding: 4px 0; margin: 0; }
+  .replybox { margin-top: 6px; display: grid; gap: 6px; }
+
+  .banner { padding: 10px 14px; border-radius: 8px; margin: 0 20px; background: var(--accent-soft); }
+  .banner.error { background: #fdeeee; color: #8a1c1c; }
+  .center { max-width: 520px; margin: 12vh auto; padding: 24px; background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); text-align: center; }
+  dialog { border: 0; border-radius: 12px; padding: 24px; max-width: 440px; width: calc(100% - 32px); background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { margin: 0 0 8px; font-size: 20px; }
+  dialog .row { justify-content: flex-end; margin-top: 16px; }
+  footer { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 24px; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+    .side { position: static; max-height: none; }
+    .picture { width: min(100%, calc(55vh * var(--ar))); }
+    header.top { padding: 12px 16px; }
+    .zoombar { right: 10px; bottom: 10px; }
+    .zoombar button { min-width: 30px; height: 28px; padding: 0 6px; }
+    .zoombar span { min-width: 40px; }
+  }
+</style>
+</head>
+<body>
+<div id="loading" class="center"><p>Opening the review…</p></div>
+<div id="problem" class="center" hidden><h2>This review can't be opened</h2><p id="problemText"></p></div>
+
+<div id="app" hidden>
+  <header class="top">
+    <h1><span id="title"></span><span class="from" id="from"></span></h1>
+    <span class="me">Reviewing as <b id="myName"></b> · <button class="link" id="changeName">Change</button></span>
+    <button class="primary" id="sendBack" title="Let them know you've finished: your comments are already saved">✓ Send Back</button>
+  </header>
+  <p class="banner" id="notice" hidden></p>
+
+  <div class="layout">
+    <main class="stage">
+      <div class="row">
+        <div class="switch" id="modeSwitch" hidden>
+          <button id="modeSteps">🖼 Steps</button><button id="modeVideo">▶ Video</button>
+        </div>
+        <p class="hint" id="howTo">Pick a tool to mark up the picture, then type your comment below.</p>
+      </div>
+      <div class="tools" id="tools" role="toolbar" aria-label="Markup tools"></div>
+      <div class="unsaved" id="unsaved" hidden><span id="unsavedText"></span><button type="button" class="primary" id="saveTop">💾 Save</button></div>
+      <div class="framewrap" id="framewrap">
+        <div class="frame" id="frame"></div>
+        <div class="zoombar" id="zoombar" role="group" aria-label="Zoom">
+          <button type="button" id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+          <span id="zoomLevel">Fit</span>
+          <button type="button" id="zoomIn" title="Zoom in (or pinch, or Ctrl + scroll)" aria-label="Zoom in">+</button>
+          <button type="button" id="zoomFit" title="Fit the whole picture (or double-click it)">Fit</button>
+        </div>
+      </div>
+      <div class="blips" id="blips" hidden>
+        <div class="blipline" id="blipline"></div>
+        <p class="hint" id="bliphint"></p>
+      </div>
+      <div class="stepbar" id="stepbar">
+        <button id="prev">‹ Previous</button><span id="stepOf" class="hint"></span><button id="next">Next ›</button>
+      </div>
+      <div class="caption" id="caption"></div>
+
+      <form class="composer" id="composer">
+        <div class="row" style="justify-content: space-between">
+          <span>Your comments on <span class="target" id="targetLabel"></span></span>
+          <button type="button" class="link" id="wholeGuide">Comment on the whole guide instead</button>
+        </div>
+        <div class="marks" id="marks"></div>
+        <textarea id="text" placeholder="What should change?" maxlength="5000"></textarea>
+        <label class="check" id="suggestRow"><input type="checkbox" id="suggestOn"> Suggest new wording for this step</label>
+        <textarea id="suggestion" hidden maxlength="5000"></textarea>
+        <div class="row" style="justify-content: flex-end">
+          <span class="hint" id="postState"></span>
+          <button type="button" id="clearDraft">Clear</button>
+          <button type="submit" class="primary" id="post">💾 Save</button>
+        </div>
+      </form>
+    </main>
+
+    <aside class="side">
+      <div class="tabs" role="tablist">
+        <button id="tabSteps" role="tab">Steps</button>
+        <button id="tabComments" role="tab">Comments</button>
+      </div>
+      <div class="list" id="list"></div>
+    </aside>
+  </div>
+  <footer>Your comments are kept once you press Save. Only people with this link can see this page.</footer>
+</div>
+
+<dialog id="nameDialog">
+  <form method="dialog" id="nameForm">
+    <h2>Who's reviewing?</h2>
+    <p class="hint">Your name is shown with your comments. No account needed.</p>
+    <p><input type="text" id="nameInput" maxlength="80" autocomplete="name" placeholder="Your name" required></p>
+    <div class="row"><button type="submit" class="primary">Start Reviewing</button></div>
+  </form>
+</dialog>
+
+<dialog id="sendDialog">
+  <h2>Send your review back?</h2>
+  <p id="sendText"></p>
+  <div class="row"><button id="sendCancel">Not Yet</button><button class="primary" id="sendOk">✓ Send Back</button></div>
+</dialog>
+
+<script>
+(() => {
+  'use strict'
+  const CONFIG = {"api":"https://uxpenshsinrybnbgqquu.supabase.co","key":"sb_publishable_m7oJ_FeAs3XAuTN43gMd3w_FCDL9MWa"}
+  const BUCKET = 'review-files'
+  const COLORS = ['#e03131', '#f08c00', '#2f9e44', '#1971c2', '#7048e8']
+  const TOOLS = [
+    { id: 'select', icon: '👆', name: 'Select: click a mark to pick it, drag to move it' },
+    { id: 'pin', icon: '📍', name: 'Pin: click a spot' },
+    { id: 'box', icon: '▭', name: 'Box: drag around something' },
+    { id: 'circle', icon: '◯', name: 'Circle: drag around something' },
+    { id: 'arrow', icon: '➜', name: 'Arrow: drag from tail to tip' },
+    { id: 'highlight', icon: '🖍', name: 'Highlight: drag over an area to shade it' },
+    { id: 'pen', icon: '✎', name: 'Pen: draw freely' }
+  ]
+  const KIND_NAMES = { pin: 'Pin', box: 'Box', circle: 'Circle', arrow: 'Arrow', highlight: 'Highlight', pen: 'Drawing' }
+
+  const $ = (id) => document.getElementById(id)
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  /** Step text: **bold** kept, everything else escaped. */
+  const rich = (s) => String(s).split('**').map((p, i) => (i % 2 ? `<strong>${esc(p)}</strong>` : esc(p))).join('').replace(/\n/g, '<br>')
+  const plain = (s) => String(s).split('**').join('')
+  const clock = (ms) => {
+    const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = String(t % 60).padStart(2, '0')
+    return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
+  }
+  const when = (iso) => {
+    const d = new Date(iso)
+    return isNaN(d) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  }
+  const store = {
+    get(k) { try { return localStorage.getItem(k) } catch { return null } },
+    set(k, v) { try { localStorage.setItem(k, v) } catch { /* private window: just not remembered */ } }
+  }
+  const newId = () => (crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)))
+
+  // --- The link: #r=<review id>&k=<secret> ---
+  const params = new URLSearchParams(location.hash.slice(1))
+  const reviewId = params.get('r') || ''
+  const secret = params.get('k') || ''
+
+  async function rpc(name, args) {
+    const res = await fetch(`${CONFIG.api}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: CONFIG.key },
+      body: JSON.stringify(args)
+    })
+    const body = await res.json().catch(() => null)
+    if (!res.ok) throw new Error((body && body.message) || `The server said ${res.status}.`)
+    return body
+  }
+  const fileUrl = (file) => `${CONFIG.api}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(reviewId)}/${file.split('/').map(encodeURIComponent).join('/')}`
+
+  // This browser's key for deleting its own comments: sent with each comment, never shown to anyone.
+  let editKey = store.get('review-edit-key')
+  if (!editKey) { editKey = newId() + newId(); store.set('review-edit-key', editKey) }
+  const mineKey = `review-mine-${reviewId}`
+  let mine = new Set((store.get(mineKey) || '').split(',').filter(Boolean))
+  const remember = (id) => { mine.add(id); store.set(mineKey, [...mine].join(',')) }
+
+  // --- State ---
+  let content = null
+  let comments = []
+  let me = store.get('review-name') || ''
+  let mode = 'steps'          // 'steps' or 'video'
+  let tab = 'steps'           // the side list: 'steps' or 'comments'
+  let index = 0               // the step shown
+  let tool = 'select'
+  let color = COLORS[0]
+  let marks = []              // the marks drawn but not saved yet: { shape, note }
+  let picked = null           // the mark picked (its index), to move, delete or write about
+  let wholeGuide = false      // the comment is on the whole guide
+  let selectedComment = null  // a comment picked in the list: its drawing is shown
+  let replyingTo = null
+  let videoEl = null
+
+  const entries = () => content.entries
+  const entry = () => entries()[index]
+  const hasVideo = () => !!content.video
+  const hasSteps = () => entries().length > 0
+  const unsaved = () => marks.length > 0 || $('text').value.trim() !== '' || ($('suggestOn').checked && $('suggestion').value.trim() !== '')
+
+  async function load() {
+    if (!CONFIG.api || !reviewId || !secret) return problem("This link isn't complete. Copy the whole link from the message you were sent.")
+    try {
+      const data = await rpc('open_review', { review: reviewId, secret })
+      if (!data) return problem('This review link has expired or was stopped. Ask for a new link.')
+      content = data.content
+      comments = data.comments || []
+    } catch (err) {
+      return problem(`Couldn't load the review. Check your internet connection and refresh the page. (${err.message})`)
+    }
+    document.title = `Review: ${content.title}`
+    $('title').textContent = content.title
+    $('from').textContent = `Review requested by ${content.from}`
+    mode = hasSteps() ? 'steps' : 'video'
+    $('loading').hidden = true
+    $('app').hidden = false
+    $('modeSwitch').hidden = !(hasSteps() && hasVideo())
+    renderTools()
+    render()
+    if (!me) askName()
+    else $('myName').textContent = me
+  }
+
+  function problem(text) {
+    $('loading').hidden = true
+    $('problem').hidden = false
+    $('problemText').textContent = text
+  }
+
+  async function reload() {
+    try {
+      const data = await rpc('open_review', { review: reviewId, secret })
+      if (data) comments = data.comments || []
+    } catch { /* keep what we have */ }
+    renderList()
+    renderOverlay()
+    if (videoEl) renderBlips()
+  }
+
+  function askName() {
+    $('nameInput').value = me
+    $('nameDialog').showModal()
+  }
+  $('nameForm').addEventListener('submit', () => {
+    const name = $('nameInput').value.trim().slice(0, 80)
+    if (!name) return
+    me = name
+    store.set('review-name', me)
+    $('myName').textContent = me
+  })
+  $('nameDialog').addEventListener('cancel', (e) => { if (!me) e.preventDefault() })
+  $('changeName').addEventListener('click', askName)
+
+  // Leaving with marks or words not saved: the browser asks first.
+  window.addEventListener('beforeunload', (e) => { if (content && unsaved()) { e.preventDefault(); e.returnValue = '' } })
+
+  // --- Where a comment goes ---
+  function currentTarget() {
+    if (wholeGuide) return { kind: 'guide' }
+    if (mode === 'video') return { kind: 'video', ms: Math.round((videoEl ? videoEl.currentTime : 0) * 1000) }
+    return entry() ? { kind: 'step', entryId: entry().id } : { kind: 'guide' }
+  }
+  function targetName(t) {
+    if (t.kind === 'guide') return 'the whole guide'
+    if (t.kind === 'video') return `the video at ${clock(t.ms)}`
+    const e = entries().find((x) => x.id === t.entryId)
+    return !e ? 'a step' : e.kind === 'note' ? 'a note' : `step ${e.number}`
+  }
+  const shortName = (t) => { const n = targetName(t); return n.charAt(0).toUpperCase() + n.slice(1) }
+
+  // --- Toolbar ---
+  function renderTools() {
+    const box = $('tools')
+    box.innerHTML = ''
+    for (const t of TOOLS) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'tool' + (tool === t.id ? ' on' : '')
+      b.textContent = t.icon
+      b.title = t.name
+      b.setAttribute('aria-label', t.name)
+      b.setAttribute('aria-pressed', String(tool === t.id))
+      b.onclick = () => { tool = t.id; if (tool !== 'select') { wholeGuide = false; videoEl?.pause() } renderTools(); renderFrameMode(); renderComposer() }
+      box.appendChild(b)
+    }
+    box.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }))
+    for (const c of COLORS) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'swatch' + (c === color ? ' on' : '')
+      b.style.background = c
+      b.title = picked !== null ? 'Colour (changes the picked mark too)' : 'Colour'
+      b.setAttribute('aria-label', `Colour ${c}`)
+      b.onclick = () => {
+        color = c
+        if (picked !== null) marks[picked].shape.color = c
+        renderTools(); renderOverlay(); renderMarks()
+      }
+      box.appendChild(b)
+    }
+    box.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }))
+    const del = document.createElement('button')
+    del.type = 'button'
+    del.textContent = '🗑 Delete Mark'
+    del.title = 'Delete the picked mark (Delete key)'
+    del.disabled = picked === null
+    del.onclick = () => deleteMark(picked)
+    box.appendChild(del)
+  }
+
+  // --- The picture or video in the middle ---
+  let picture = null
+  let svg = null
+  let size = { w: 16, h: 9 }
+
+  function render() {
+    $('modeSteps').className = mode === 'steps' ? 'on' : ''
+    $('modeVideo').className = mode === 'video' ? 'on' : ''
+    renderFrame()
+    renderList()
+    renderComposer()
+    renderMarks()
+  }
+
+  function renderFrame() {
+    const frame = $('frame')
+    frame.innerHTML = ''
+    videoEl = null
+    $('stepbar').hidden = mode !== 'steps' || entries().length < 2
+    $('caption').innerHTML = ''
+    $('blips').hidden = true
+    $('framewrap').classList.toggle('video', mode === 'video')
+    if (mode === 'video') {
+      size = { w: 16, h: 9 }
+      picture = document.createElement('div')
+      picture.className = 'picture'
+      videoEl = document.createElement('video')
+      videoEl.src = fileUrl(content.video.file)
+      videoEl.controls = true
+      videoEl.preload = 'metadata'
+      videoEl.playsInline = true
+      videoEl.addEventListener('loadedmetadata', () => {
+        size = { w: videoEl.videoWidth || 16, h: videoEl.videoHeight || 9 }
+        picture.style.setProperty('--ar', size.w / size.h)
+        applyZoom()
+        renderOverlay()
+      })
+      // Marks belong to the moment they were drawn on: playing on clears them (after asking).
+      videoEl.addEventListener('play', () => {
+        if (marks.length && !confirm('Play on? Your marks on this moment haven\'t been saved and will be cleared.')) { videoEl.pause(); return }
+        if (marks.length) { marks = []; picked = null; renderTools(); renderMarks(); renderUnsaved() }
+      })
+      for (const ev of ['timeupdate', 'seeked', 'pause', 'play', 'loadedmetadata']) videoEl.addEventListener(ev, () => { renderOverlay(); renderComposerTarget(); renderBlips() })
+      picture.style.setProperty('--ar', size.w / size.h)
+      picture.appendChild(videoEl)
+    } else {
+      const e = entry()
+      if (!e) { frame.innerHTML = '<p class="empty">This guide has no steps.</p>'; picture = null; svg = null; applyZoom(); return }
+      $('stepOf').textContent = `${index + 1} of ${entries().length}`
+      $('prev').disabled = index === 0
+      $('next').disabled = index === entries().length - 1
+      $('caption').innerHTML = (e.kind === 'note' ? '<span class="noteicon">💡</span>' : `<span class="num">${e.number}</span>`) + `<span>${rich(e.text)}</span>`
+      if (!e.image) { frame.innerHTML = '<p class="empty">No screenshot for this step. You can still comment on it below.</p>'; picture = null; svg = null; applyZoom(); return }
+      size = { w: e.image.width, h: e.image.height }
+      picture = document.createElement('div')
+      picture.className = 'picture'
+      picture.style.setProperty('--ar', size.w / size.h)
+      const img = document.createElement('img')
+      img.src = fileUrl(e.image.file)
+      img.alt = (e.number ? `Step ${e.number}: ` : '') + plain(e.text)
+      img.draggable = false
+      picture.appendChild(img)
+    }
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    picture.appendChild(svg)
+    // With Select, clicking the picture away from your marks lets go of the picked one.
+    picture.addEventListener('pointerdown', (ev) => { if (tool === 'select' && picked !== null && !(ev.target.closest && ev.target.closest('[data-mark]'))) pick(null) })
+    frame.appendChild(picture)
+    zoom = 1
+    applyZoom()
+    hookDrawing()
+    renderFrameMode()
+    renderOverlay()
+  }
+
+  // --- Zoom: + and − buttons, pinch, Ctrl + scroll, double-click; drag (or one finger) to move around when zoomed ---
+  const MAX_ZOOM = 6
+  let zoom = 1          // 1 fits the whole picture
+  let gesturing = false // two fingers are on the picture (pinching): no drawing until they're all lifted
+  let cancelLive = () => {}
+
+  /** The picture's size when it fits: as wide as there's room for, and not taller than most of the screen. */
+  function fitWidth() {
+    const frame = $('frame')
+    const room = frame.clientWidth - 16
+    const tall = window.innerHeight * (window.innerWidth <= 900 ? 0.55 : 0.75)
+    return Math.max(50, Math.min(room, tall * (size.w / size.h)))
+  }
+
+  function applyZoom() {
+    const frame = $('frame')
+    $('zoombar').hidden = !picture
+    if (!picture) { frame.style.height = ''; return }
+    const w = fitWidth()
+    picture.style.width = `${w * zoom}px`
+    // The frame keeps its fitted size while zoomed in; the picture scrolls inside it.
+    frame.style.height = zoom > 1 ? `${w * (size.h / size.w) + 16}px` : ''
+    $('zoomLevel').textContent = `${Math.round(zoom * 100)}%`
+    $('zoomLevel').hidden = zoom === 1
+    $('zoomOut').disabled = zoom <= 1
+    $('zoomIn').disabled = zoom >= MAX_ZOOM
+    $('zoomFit').disabled = zoom === 1
+    renderFrameMode()
+  }
+
+  /** Zooms to `next`, keeping the spot under (clientX, clientY) where it is (the middle of the frame if not given). */
+  function zoomTo(next, clientX, clientY) {
+    if (!picture) return
+    const frame = $('frame')
+    next = Math.min(MAX_ZOOM, Math.max(1, Math.round(next * 100) / 100))
+    const f = frame.getBoundingClientRect()
+    const cx = clientX ?? f.left + f.width / 2
+    const cy = clientY ?? f.top + f.height / 2
+    const before = picture.getBoundingClientRect()
+    const fx = (cx - before.left) / before.width
+    const fy = (cy - before.top) / before.height
+    zoom = next
+    applyZoom()
+    const after = picture.getBoundingClientRect()
+    frame.scrollLeft += after.left + fx * after.width - cx
+    frame.scrollTop += after.top + fy * after.height - cy
+  }
+
+  $('zoomIn').onclick = () => zoomTo(zoom * 1.5)
+  $('zoomOut').onclick = () => zoomTo(zoom / 1.5)
+  $('zoomFit').onclick = () => zoomTo(1)
+  window.addEventListener('resize', () => applyZoom())
+
+  ;(() => {
+    const frame = $('frame')
+    // Ctrl + scroll (and a laptop trackpad's pinch, which arrives as the same) zooms; plain scrolling scrolls.
+    frame.addEventListener('wheel', (ev) => {
+      if (!picture || !(ev.ctrlKey || ev.metaKey)) return
+      ev.preventDefault()
+      zoomTo(zoom * Math.exp(-Math.max(-100, Math.min(100, ev.deltaY)) * 0.002), ev.clientX, ev.clientY)
+    }, { passive: false })
+    frame.addEventListener('dblclick', (ev) => {
+      if (!picture || tool !== 'select' || (ev.target.closest && ev.target.closest('[data-mark]'))) return
+      zoomTo(zoom > 1 ? 1 : 2.5, ev.clientX, ev.clientY)
+    })
+    // Two fingers: pinch to zoom and move around. Watched before the drawing sees them.
+    const touches = new Map()
+    let pinch = null
+    const spread = () => { const [a, b] = [...touches.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } }
+    frame.addEventListener('pointerdown', (ev) => {
+      if (ev.pointerType !== 'touch' || !picture) return
+      touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+      if (touches.size === 2) {
+        gesturing = true
+        cancelLive()
+        pinch = { ...spread(), zoom }
+        ev.stopPropagation()
+        ev.preventDefault()
+      }
+    }, true)
+    frame.addEventListener('pointermove', (ev) => {
+      if (!touches.has(ev.pointerId)) return
+      touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+      if (!pinch || touches.size < 2) return
+      ev.stopPropagation()
+      const now = spread()
+      zoomTo(pinch.zoom * (now.d / pinch.d), now.x, now.y)
+      frame.scrollLeft -= now.x - pinch.x
+      frame.scrollTop -= now.y - pinch.y
+      pinch.x = now.x
+      pinch.y = now.y
+    }, true)
+    const lift = (ev) => {
+      if (!touches.delete(ev.pointerId)) return
+      if (touches.size < 2) pinch = null
+      if (touches.size === 0) gesturing = false
+    }
+    frame.addEventListener('pointerup', lift, true)
+    frame.addEventListener('pointercancel', lift, true)
+    // Zoomed in, with Select: dragging the picture moves around it (with the mouse, or one finger).
+    let pan = null
+    frame.addEventListener('pointerdown', (ev) => {
+      if (!picture || zoom <= 1 || tool !== 'select' || gesturing || ev.button !== 0) return
+      if (ev.target.closest && (ev.target.closest('[data-mark]') || ev.target.closest('video'))) return
+      ev.preventDefault()
+      pan = { x: ev.clientX, y: ev.clientY, left: frame.scrollLeft, top: frame.scrollTop, id: ev.pointerId }
+      frame.setPointerCapture(ev.pointerId)
+      picture.classList.add('panning')
+    })
+    frame.addEventListener('pointermove', (ev) => {
+      if (!pan || ev.pointerId !== pan.id || gesturing) return
+      frame.scrollLeft = pan.left - (ev.clientX - pan.x)
+      frame.scrollTop = pan.top - (ev.clientY - pan.y)
+    })
+    const endPan = () => { pan = null; picture?.classList.remove('panning') }
+    frame.addEventListener('pointerup', endPan)
+    frame.addEventListener('pointercancel', endPan)
+  })()
+
+  /**
+   * Under the video: its whole length, with a numbered blip for every comment on a moment of it (click to see it)
+   * and a faint tick where each step is. Clicking the line itself jumps there.
+   */
+  function renderBlips() {
+    const box = $('blips')
+    box.hidden = mode !== 'video' || !videoEl
+    if (box.hidden) return
+    const total = (videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration * 1000 : content.video.durationMs) || 1
+    const pct = (ms) => `${Math.min(100, Math.max(0, (ms / total) * 100))}%`
+    const line = $('blipline')
+    const now = videoEl.currentTime * 1000
+    const top = comments.filter((c) => !c.parentId && c.kind !== 'done' && c.target.kind === 'video').sort((a, b) => a.target.ms - b.target.ms)
+    let html = `<div class="played" style="width:${pct(now)}"></div>`
+    for (const e of entries()) if (e.videoMs != null) html += `<div class="tick" style="left:${pct(e.videoMs)}"></div>`
+    // Comments close together share one dot (otherwise they'd sit on top of each other), labelled with how many.
+    const groups = []
+    for (const c of top) {
+      const last = groups[groups.length - 1]
+      if (last && (c.target.ms - last[0].target.ms) / total < 0.02) last.push(c)
+      else groups.push([c])
+    }
+    for (const g of groups) {
+      const c = g[0]
+      const col = c.shapes && c.shapes[0] && /^#[0-9a-f]{6}$/i.test(c.shapes[0].color) ? c.shapes[0].color : '#e03131'
+      const on = g.some((x) => x.id === selectedComment)
+      const title = g.map((x) => `${clock(x.target.ms)} ${x.author}: ${x.text}`).join('\n')
+      html += `<button type="button" class="blip${on ? ' on' : ''}" data-id="${esc(c.id)}" style="left:${pct(c.target.ms)};background:${col}" title="${esc(title)}" aria-label="${esc(title)}">${g.length > 1 ? g.length : '💬'}</button>`
+    }
+    html += `<div class="head" style="left:${pct(now)}"></div>`
+    line.innerHTML = html
+    $('bliphint').textContent = top.length
+      ? `${top.length} comment${top.length === 1 ? '' : 's'} on the video: click a dot to see it (a number means several close together).${entries().some((e) => e.videoMs != null) ? ' Thin lines are where each step starts.' : ''}`
+      : 'Comments you save on the video show here as numbered dots.'
+  }
+  $('blipline').addEventListener('click', (ev) => {
+    if (!videoEl) return
+    const blip = ev.target.closest('.blip')
+    if (blip) { const c = comments.find((x) => x.id === blip.dataset.id); if (c) { goTo(c); tab = 'comments'; renderList() } return }
+    const r = $('blipline').getBoundingClientRect()
+    const total = (videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration : content.video.durationMs / 1000) || 0
+    if (unsaved() && !confirm('Move to another moment? Your marks here haven\'t been saved and will be cleared.')) return
+    if (marks.length) { marks = []; picked = null; renderTools(); renderMarks(); renderUnsaved() }
+    videoEl.pause()
+    videoEl.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * total
+  })
+
+  function renderFrameMode() {
+    if (picture) {
+      // Fingers draw with a drawing tool, and move around a zoomed picture; otherwise they scroll the page.
+      picture.style.touchAction = tool !== 'select' || zoom > 1 ? 'none' : 'pan-y'
+      picture.classList.toggle('pannable', tool === 'select' && zoom > 1)
+    }
+    if (picture) picture.classList.toggle('drawing', tool !== 'select')
+    $('howTo').textContent = tool === 'select'
+      ? 'Pick a tool to mark up the picture. Click a mark to move or delete it.'
+      : mode === 'video' ? 'Draw on the paused video. Each mark gets a number and its own note below.' : 'Draw on the screenshot. Each mark gets a number and its own note below.'
+  }
+
+  /** The point under the pointer, as fractions of the picture. */
+  function at(ev) {
+    const r = svg.getBoundingClientRect()
+    return { x: Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)) }
+  }
+
+  function hookDrawing() {
+    let live = null   // a mark being drawn
+    let moving = null // a mark being dragged: where the drag started and the shape as it was
+    cancelLive = () => { live = null; moving = null; renderOverlay() }
+    svg.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0 || gesturing) return
+      const hit = ev.target.closest && ev.target.closest('[data-mark]')
+      // Pressing on one of your marks picks it and drags it, whatever tool is chosen.
+      if (hit) {
+        ev.preventDefault()
+        pick(Number(hit.dataset.mark))
+        svg.setPointerCapture(ev.pointerId)
+        moving = { start: at(ev), shape: JSON.parse(JSON.stringify(marks[picked].shape)), moved: false }
+        return
+      }
+      if (tool === 'select') { if (picked !== null) pick(null); return }
+      ev.preventDefault()
+      videoEl?.pause()
+      svg.setPointerCapture(ev.pointerId)
+      const p = at(ev)
+      live = { type: tool, color, x1: p.x, y1: p.y, x2: p.x, y2: p.y }
+      if (tool === 'pen') live.points = [p.x, p.y]
+      renderOverlay(live)
+    })
+    svg.addEventListener('pointermove', (ev) => {
+      if (gesturing) return
+      if (moving) {
+        const p = at(ev)
+        const s0 = moving.shape
+        // Kept inside the picture as a whole.
+        const xs = s0.points ? s0.points.filter((_, i) => i % 2 === 0) : [s0.x1, s0.x2]
+        const ys = s0.points ? s0.points.filter((_, i) => i % 2 === 1) : [s0.y1, s0.y2]
+        const dx = Math.min(1 - Math.max(...xs), Math.max(-Math.min(...xs), p.x - moving.start.x))
+        const dy = Math.min(1 - Math.max(...ys), Math.max(-Math.min(...ys), p.y - moving.start.y))
+        const s = marks[picked].shape
+        s.x1 = r4(s0.x1 + dx); s.x2 = r4(s0.x2 + dx); s.y1 = r4(s0.y1 + dy); s.y2 = r4(s0.y2 + dy)
+        if (s0.points) s.points = s0.points.map((v, i) => r4(v + (i % 2 ? dy : dx)))
+        moving.moved = true
+        renderOverlay()
+        return
+      }
+      if (!live) return
+      const p = at(ev)
+      live.x2 = p.x; live.y2 = p.y
+      if (live.type === 'pin') { live.x1 = p.x; live.y1 = p.y }
+      if (live.points && live.points.length < 2000) live.points.push(p.x, p.y)
+      renderOverlay(live)
+    })
+    const end = () => {
+      if (moving) { moving = null; return }
+      if (!live) return
+      const small = Math.abs(live.x2 - live.x1) < 0.005 && Math.abs(live.y2 - live.y1) < 0.005
+      if (live.type === 'pen') {
+        const xs = live.points.filter((_, i) => i % 2 === 0), ys = live.points.filter((_, i) => i % 2 === 1)
+        Object.assign(live, { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) })
+        if (live.points.length >= 4) addMark(live)
+      } else if (live.type === 'pin') addMark({ ...live, x2: live.x1, y2: live.y1 })
+      else if (!small) addMark(live)
+      live = null
+      renderOverlay()
+    }
+    svg.addEventListener('pointerup', end)
+    svg.addEventListener('pointercancel', end)
+  }
+  const r4 = (v) => Math.round(v * 10000) / 10000
+  function round(s) {
+    const out = { type: s.type, color: s.color, x1: r4(s.x1), y1: r4(s.y1), x2: r4(s.x2), y2: r4(s.y2) }
+    if (s.points) out.points = s.points.map(r4)
+    return out
+  }
+
+  /** A new mark: numbered, picked, and its note box ready to type in. */
+  function addMark(shape) {
+    marks.push({ shape: round(shape), note: '' })
+    picked = marks.length - 1
+    wholeGuide = false
+    renderTools(); renderMarks(); renderComposer(); renderOverlay(); renderUnsaved()
+    const input = $('marks').querySelector(`[data-note="${picked}"]`)
+    input?.focus({ preventScroll: true })
+  }
+
+  function pick(i) {
+    picked = i
+    if (i !== null && marks[i]) color = marks[i].shape.color
+    renderTools(); renderOverlay(); renderMarks()
+  }
+
+  function deleteMark(i) {
+    if (i === null || !marks[i]) return
+    marks.splice(i, 1)
+    picked = null
+    renderTools(); renderOverlay(); renderMarks(); renderUnsaved()
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const typing = e.target.closest && e.target.closest('input, textarea, dialog')
+    if (!typing && (e.key === 'Delete' || e.key === 'Backspace') && picked !== null) { e.preventDefault(); deleteMark(picked); return }
+    if (!typing && e.key === 'Escape' && picked !== null) { pick(null); return }
+    if (typing || mode !== 'steps') return
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { if (index > 0) showStep(index - 1) } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { if (index < entries().length - 1) showStep(index + 1) } else return
+    e.preventDefault()
+  })
+
+  /** The saved comments shown on the picture now: those on this step, or near this moment of the paused video. */
+  function commentsHere() {
+    return comments.filter((c) => {
+      if (!c.shapes || !c.shapes.length || c.parentId) return false
+      if (mode === 'steps') return c.target.kind === 'step' && entry() && c.target.entryId === entry().id
+      return c.target.kind === 'video' && videoEl && Math.abs(c.target.ms - videoEl.currentTime * 1000) < 600
+    })
+  }
+
+  function renderOverlay(live) {
+    if (!svg) return
+    const { w, h } = size
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+    const base = Math.max(w, h)
+    let out = ''
+    const here = commentsHere()
+    const anyPicked = here.some((c) => c.id === selectedComment)
+    for (const c of here) {
+      const faint = (anyPicked && selectedComment !== c.id) || marks.length > 0
+      out += `<g opacity="${faint ? 0.35 : 0.9}">` + c.shapes.map((s) => shapeSvg(s, w, h, base)).join('') + '</g>'
+    }
+    marks.forEach((m, i) => {
+      out += `<g class="mark" data-mark="${i}">${hitSvg(m.shape, w, h, base)}${shapeSvg(m.shape, w, h, base)}${numberSvg(m.shape, i + 1, w, h, base)}</g>`
+      if (i === picked) out += pickedSvg(m.shape, w, h, base)
+    })
+    if (live) out += shapeSvg(live, w, h, base)
+    svg.innerHTML = out
+  }
+
+  /** The box around a shape, in picture pixels. */
+  function boundsOf(s, w, h, base) {
+    if (s.type === 'pin') { const r = Math.max(8, base * 0.011); return { x: s.x1 * w - r * 1.6, y: s.y1 * h - r * 4.3, w: r * 3.2, h: r * 4.3 } }
+    return { x: Math.min(s.x1, s.x2) * w, y: Math.min(s.y1, s.y2) * h, w: Math.abs(s.x2 - s.x1) * w, h: Math.abs(s.y2 - s.y1) * h }
+  }
+
+  /** A wide see-through outline so thin marks are easy to click. */
+  function hitSvg(s, w, h, base) {
+    const b = boundsOf(s, w, h, base)
+    const pad = Math.max(6, base * 0.008)
+    if (s.type === 'pin' || s.type === 'highlight') return `<rect class="hitfill" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="transparent"/>`
+    if (s.type === 'arrow') return `<line class="hit" x1="${s.x1 * w}" y1="${s.y1 * h}" x2="${s.x2 * w}" y2="${s.y2 * h}" stroke="transparent" stroke-width="${pad * 3}"/>`
+    if (s.type === 'pen') return `<polyline class="hit" points="${penPoints(s, w, h)}" stroke="transparent" stroke-width="${pad * 3}" fill="none"/>`
+    if (s.type === 'circle') return `<ellipse class="hit" cx="${b.x + b.w / 2}" cy="${b.y + b.h / 2}" rx="${b.w / 2}" ry="${b.h / 2}" stroke="transparent" stroke-width="${pad * 3}" fill="none"/>`
+    return `<rect class="hit" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" stroke="transparent" stroke-width="${pad * 3}" fill="none"/>`
+  }
+
+  function pickedSvg(s, w, h, base) {
+    const b = boundsOf(s, w, h, base)
+    const pad = Math.max(6, base * 0.006)
+    const sw = Math.max(1.5, base * 0.0015)
+    return `<rect x="${b.x - pad}" y="${b.y - pad}" width="${b.w + pad * 2}" height="${b.h + pad * 2}" fill="none" stroke="#fff" stroke-width="${sw * 3}"/>` +
+      `<rect x="${b.x - pad}" y="${b.y - pad}" width="${b.w + pad * 2}" height="${b.h + pad * 2}" fill="none" stroke="#1971c2" stroke-width="${sw * 1.5}" stroke-dasharray="${sw * 6} ${sw * 4}"/>`
+  }
+
+  /** The mark's number, at its top-left, matching its note below. */
+  function numberSvg(s, n, w, h, base) {
+    const b = boundsOf(s, w, h, base)
+    const r = Math.max(10, base * 0.012)
+    const cx = s.type === 'pin' ? b.x + b.w + r * 0.6 : b.x
+    const cy = s.type === 'pin' ? b.y + r * 0.6 : b.y
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${esc(s.color)}" stroke="#fff" stroke-width="${r * 0.18}"/>` +
+      `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${r * 1.2}" font-weight="700" font-family="Segoe UI, system-ui, sans-serif">${n}</text>`
+  }
+
+  function penPoints(s, w, h) {
+    const pts = []
+    for (let i = 0; i + 1 < (s.points || []).length; i += 2) pts.push(`${s.points[i] * w},${s.points[i + 1] * h}`)
+    return pts.join(' ')
+  }
+
+  function shapeSvg(s, w, h, base) {
+    const c = /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : COLORS[0]
+    const sw = Math.max(2, base * 0.004)
+    const x1 = s.x1 * w, y1 = s.y1 * h, x2 = s.x2 * w, y2 = s.y2 * h
+    const bx = Math.min(x1, x2), by = Math.min(y1, y2), bw = Math.abs(x2 - x1), bh = Math.abs(y2 - y1)
+    const halo = `stroke="#fff" stroke-opacity=".7" stroke-width="${sw * 2.2}" fill="none"`
+    switch (s.type) {
+      case 'pin': {
+        const r = Math.max(8, base * 0.011)
+        const d = `M${x1},${y1} c${-r * 0.9},${-r * 1.3} ${-r * 1.6},${-r * 1.9} ${-r * 1.6},${-r * 2.7} a${r * 1.6},${r * 1.6} 0 1 1 ${r * 3.2},0 c0,${r * 0.8} ${-r * 0.7},${r * 1.4} ${-r * 1.6},${r * 2.7}z`
+        return `<path d="${d}" fill="${c}" stroke="#fff" stroke-width="${sw * 0.8}"/><circle cx="${x1}" cy="${y1 - r * 2.7}" r="${r * 0.6}" fill="#fff"/>`
+      }
+      case 'circle':
+        return `<ellipse cx="${bx + bw / 2}" cy="${by + bh / 2}" rx="${bw / 2}" ry="${bh / 2}" ${halo}/><ellipse cx="${bx + bw / 2}" cy="${by + bh / 2}" rx="${bw / 2}" ry="${bh / 2}" stroke="${c}" stroke-width="${sw}" fill="none"/>`
+      case 'box':
+        return `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="${sw}" ${halo}/><rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="${sw}" stroke="${c}" stroke-width="${sw}" fill="none"/>`
+      case 'highlight':
+        return `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="${sw}" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="${sw * 0.6}"/>`
+      case 'arrow': {
+        const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len
+        const hl = Math.min(sw * 4.5, len * 0.6), hw = hl * 0.8, ex = x2 - ux * hl, ey = y2 - uy * hl
+        const head = `${x2},${y2} ${ex - uy * hw / 2},${ey + ux * hw / 2} ${ex + uy * hw / 2},${ey - ux * hw / 2}`
+        return `<line x1="${x1}" y1="${y1}" x2="${ex}" y2="${ey}" ${halo} stroke-linecap="round"/><polygon points="${head}" fill="#fff" fill-opacity=".7" stroke="#fff" stroke-opacity=".7" stroke-width="${sw}" stroke-linejoin="round"/>` +
+          `<line x1="${x1}" y1="${y1}" x2="${ex + ux}" y2="${ey + uy}" stroke="${c}" stroke-width="${sw}" stroke-linecap="round"/><polygon points="${head}" fill="${c}"/>`
+      }
+      case 'pen': {
+        const p = penPoints(s, w, h)
+        return `<polyline points="${p}" ${halo} stroke-linecap="round" stroke-linejoin="round"/><polyline points="${p}" stroke="${c}" stroke-width="${sw}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+      }
+    }
+    return ''
+  }
+
+  // --- The marks' notes, and the reminder to save ---
+  function renderMarks() {
+    const box = $('marks')
+    box.innerHTML = ''
+    marks.forEach((m, i) => {
+      const row = document.createElement('div')
+      row.className = 'markrow' + (i === picked ? ' on' : '')
+      row.innerHTML = `<span class="marknum" style="background:${esc(m.shape.color)}">${i + 1}</span><span class="markkind">${KIND_NAMES[m.shape.type] || 'Mark'}</span>` +
+        `<input type="text" maxlength="5000" data-note="${i}" placeholder="What about this ${(KIND_NAMES[m.shape.type] || 'mark').toLowerCase()}?">` +
+        `<button type="button" class="del" title="Delete this mark" aria-label="Delete mark ${i + 1}">🗑</button>`
+      const input = row.querySelector('input')
+      input.value = m.note
+      input.addEventListener('input', () => { m.note = input.value; renderUnsaved() })
+      input.addEventListener('focus', () => { if (picked !== i) { picked = i; renderTools(); renderOverlay(); box.querySelectorAll('.markrow').forEach((r, j) => r.classList.toggle('on', j === i)) } })
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save() } })
+      row.querySelector('.del').onclick = () => deleteMark(i)
+      box.appendChild(row)
+    })
+    $('text').placeholder = marks.length ? 'Anything else? (optional)' : 'What should change?'
+  }
+
+  function renderUnsaved() {
+    const n = marks.length
+    const words = $('text').value.trim() !== '' || ($('suggestOn').checked && $('suggestion').value.trim() !== '')
+    $('unsaved').hidden = !(n || words)
+    $('unsavedText').textContent = n
+      ? `${n} mark${n === 1 ? '' : 's'} not saved yet. Write what each one is about below, then press Save.`
+      : 'Your comment isn\'t saved yet. Press Save when you\'re done.'
+  }
+  $('text').addEventListener('input', renderUnsaved)
+  $('suggestion').addEventListener('input', renderUnsaved)
+
+  // --- Composer ---
+  function renderComposerTarget() {
+    $('targetLabel').textContent = targetName(currentTarget())
+  }
+  function renderComposer() {
+    renderComposerTarget()
+    const onStep = !wholeGuide && mode === 'steps' && entry() && entry().kind === 'step'
+    $('suggestRow').hidden = !onStep
+    if (!onStep) { $('suggestOn').checked = false; $('suggestion').hidden = true }
+    $('wholeGuide').textContent = wholeGuide ? (mode === 'video' ? 'Comment on this moment instead' : 'Comment on this step instead') : 'Comment on the whole guide instead'
+  }
+  $('wholeGuide').addEventListener('click', () => {
+    if (!wholeGuide && marks.length && !confirm('Comments on the whole guide have no marks. Clear your marks?')) return
+    wholeGuide = !wholeGuide
+    if (wholeGuide) { marks = []; picked = null; tool = 'select'; renderTools(); renderFrameMode(); renderOverlay(); renderMarks(); renderUnsaved() }
+    renderComposer()
+  })
+  $('suggestOn').addEventListener('change', () => {
+    $('suggestion').hidden = !$('suggestOn').checked
+    if ($('suggestOn').checked) { $('suggestion').value = plain(entry().text); $('suggestion').focus() }
+    renderUnsaved()
+  })
+  $('text').addEventListener('focus', () => videoEl?.pause())
+  $('clearDraft').addEventListener('click', () => { if (!unsaved() || confirm('Clear your marks and comment?')) clearDraft() })
+  function clearDraft() {
+    $('text').value = ''
+    $('suggestOn').checked = false
+    $('suggestion').hidden = true
+    marks = []
+    picked = null
+    tool = 'select'
+    wholeGuide = false
+    renderTools(); renderFrameMode(); renderOverlay(); renderComposer(); renderMarks(); renderUnsaved()
+  }
+
+  $('composer').addEventListener('submit', (ev) => { ev.preventDefault(); void save() })
+  $('saveTop').addEventListener('click', () => void save())
+
+  /**
+   * Saves what's been written: each mark with a note becomes its own comment (its own to-do), and the comment box
+   * (with any marks that have no note) one more. Saved one at a time, so a failure keeps what wasn't saved.
+   */
+  async function save() {
+    if (!me) return askName()
+    const text = $('text').value.trim()
+    const suggesting = $('suggestOn').checked && !$('suggestRow').hidden
+    const suggestion = suggesting ? $('suggestion').value.trim() : ''
+    const loose = marks.filter((m) => !m.note.trim())
+    if (!marks.length && !text && !suggestion) {
+      $('postState').textContent = 'Draw a mark or type a comment first.'
+      $('text').focus()
+      return
+    }
+    if (loose.length && !text && !suggestion) {
+      const n = marks.indexOf(loose[0]) + 1
+      $('postState').textContent = `Say what mark ${n} is about, so they know what to change.`
+      $('marks').querySelector(`[data-note="${n - 1}"]`)?.focus()
+      return
+    }
+    const target = currentTarget()
+    const out = marks.filter((m) => m.note.trim()).map((m) => ({ mark: m, comment: { id: newId(), parentId: null, author: me, kind: 'comment', text: m.note.trim(), target, shapes: [m.shape] } }))
+    if (text || suggestion || loose.length) {
+      const c = { id: newId(), parentId: null, author: me, kind: suggestion ? 'suggestion' : 'comment', text, target, shapes: wholeGuide ? [] : loose.map((m) => m.shape) }
+      if (suggestion) c.suggestion = suggestion
+      out.push({ mark: null, loose: true, comment: c })
+    }
+    $('post').disabled = $('saveTop').disabled = true
+    $('postState').textContent = 'Saving…'
+    let saved = 0
+    try {
+      for (const item of out) {
+        await post(item.comment)
+        saved++
+        if (item.mark) marks = marks.filter((m) => m !== item.mark)
+        else { marks = marks.filter((m) => m.note.trim()); $('text').value = ''; $('suggestOn').checked = false; $('suggestion').hidden = true }
+        selectedComment = item.comment.id
+      }
+      $('postState').textContent = `✓ Saved`
+      setTimeout(() => { if ($('postState').textContent === '✓ Saved') $('postState').textContent = '' }, 2500)
+      clearDraft()
+      tab = 'comments'
+    } catch (err) {
+      $('postState').textContent = `${saved ? `${saved} saved, but the rest weren't` : 'Not saved'}: ${err.message} Press Save to try again.`
+      picked = null
+      renderTools(); renderMarks(); renderUnsaved()
+    } finally {
+      $('post').disabled = $('saveTop').disabled = false
+      void reload()
+    }
+  }
+
+  async function post(comment) {
+    const saved = await rpc('add_review_comment', { review: reviewId, secret, comment: { ...comment, editKey } })
+    remember(comment.id)
+    comments.push({ ...comment, createdAt: (saved && saved.createdAt) || new Date().toISOString() })
+  }
+
+  async function removeComment(c) {
+    if (!confirm('Delete this comment? Its replies go too.')) return
+    try {
+      await rpc('delete_review_comment', { review: reviewId, secret, comment_id: c.id, edit_key: editKey })
+      comments = comments.filter((x) => x.id !== c.id && x.parentId !== c.id)
+      if (selectedComment === c.id) selectedComment = null
+      renderList(); renderOverlay()
+      void reload()
+    } catch (err) {
+      alert(`That comment couldn't be deleted: ${err.message}`)
+    }
+  }
+
+  // --- The side list ---
+  $('tabSteps').onclick = () => { tab = 'steps'; renderList() }
+  $('tabComments').onclick = () => { tab = 'comments'; renderList() }
+
+  function order(c) {
+    const t = c.target
+    if (t.kind === 'guide') return -1
+    if (t.kind === 'video') return t.ms
+    const i = entries().findIndex((e) => e.id === t.entryId)
+    const e = entries()[i]
+    return e ? (e.videoMs != null ? e.videoMs : i) : 1e15
+  }
+
+  function renderList() {
+    const top = comments.filter((c) => !c.parentId && c.kind !== 'done')
+    $('tabSteps').hidden = !hasSteps()
+    if (!hasSteps()) tab = 'comments'
+    $('tabSteps').className = tab === 'steps' ? 'on' : ''
+    $('tabComments').className = tab === 'comments' ? 'on' : ''
+    $('tabComments').textContent = `Comments (${top.length})`
+    const list = $('list')
+    list.innerHTML = ''
+    if (tab === 'steps') {
+      entries().forEach((e, i) => {
+        const n = top.filter((c) => c.target.kind === 'step' && c.target.entryId === e.id).length
+        const div = document.createElement('div')
+        div.className = 'item' + (mode === 'steps' && i === index ? ' on' : '')
+        div.innerHTML = (e.image ? `<img src="${esc(fileUrl(e.image.file))}" alt="" loading="lazy">` : '') +
+          `<div class="text">${e.kind === 'note' ? '💡 ' : `<b>${e.number}.</b> `}${rich(e.text)}` +
+          (n ? `<br><span class="badge">💬 ${n}</span>` : '') + '</div>'
+        div.onclick = () => showStep(i)
+        list.appendChild(div)
+      })
+      return
+    }
+    if (top.length === 0) {
+      list.innerHTML = '<p class="hint" style="padding: 8px">No comments yet. Mark up a step or the video and save the first one.</p>'
+      return
+    }
+    for (const c of [...top].sort((a, b) => order(a) - order(b) || String(a.createdAt).localeCompare(String(b.createdAt)))) {
+      list.appendChild(commentEl(c))
+    }
+    list.querySelector('.comment.on')?.scrollIntoView({ block: 'nearest' })
+  }
+
+  function commentEl(c) {
+    const div = document.createElement('div')
+    div.className = 'comment' + (selectedComment === c.id ? ' on' : '')
+    const replies = comments.filter((r) => r.parentId === c.id && r.kind !== 'done')
+    const deletable = (x) => mine.has(x.id) ? ` · <button class="link delete" type="button" data-id="${esc(x.id)}">Delete</button>` : ''
+    div.innerHTML =
+      `<div class="meta"><span class="who">${esc(c.author)}</span><span>${esc(when(c.createdAt))}</span>` +
+      `<span class="where" title="Show it">${esc(shortName(c.target))}${c.shapes && c.shapes.length ? ' ✎' : ''}</span></div>` +
+      (c.text ? `<p>${esc(c.text)}</p>` : '') +
+      (c.suggestion ? `<div class="suggest"><b>Suggested wording</b>${esc(c.suggestion)}</div>` : '') +
+      (replies.length ? `<div class="replies">${replies.map((r) => `<div class="comment"><div class="meta"><span class="who">${esc(r.author)}</span><span>${esc(when(r.createdAt))}</span>${deletable(r)}</div><p>${esc(r.text)}</p></div>`).join('')}</div>` : '') +
+      `<button class="link reply" type="button">Reply</button>${deletable(c)}`
+    div.querySelector('.where').onclick = () => goTo(c)
+    div.querySelector('.reply').onclick = (ev) => { ev.stopPropagation(); replyingTo = c.id; renderList() }
+    div.querySelectorAll('.delete').forEach((b) => {
+      b.onclick = (ev) => { ev.stopPropagation(); const x = comments.find((y) => y.id === b.dataset.id); if (x) void removeComment(x) }
+    })
+    if (replyingTo === c.id) {
+      const box = document.createElement('form')
+      box.className = 'replybox'
+      box.innerHTML = '<textarea maxlength="5000" placeholder="Your reply"></textarea><div class="row" style="justify-content:flex-end"><button type="button" class="cancel">Cancel</button><button class="primary">Reply</button></div>'
+      box.querySelector('.cancel').onclick = () => { replyingTo = null; renderList() }
+      box.onsubmit = async (ev) => {
+        ev.preventDefault()
+        const text = box.querySelector('textarea').value.trim()
+        if (!text) return
+        if (!me) return askName()
+        const button = box.querySelector('.primary')
+        button.disabled = true
+        try {
+          await post({ id: newId(), parentId: c.id, author: me, kind: 'comment', text, target: c.target, shapes: [] })
+          replyingTo = null
+          renderList()
+          void reload()
+        } catch (err) {
+          button.disabled = false
+          alert(`Your reply wasn't saved: ${err.message}`)
+        }
+      }
+      div.appendChild(box)
+      setTimeout(() => box.querySelector('textarea').focus(), 0)
+    }
+    return div
+  }
+
+  /** Shows where a comment is, with its drawing picked out. */
+  function goTo(c) {
+    if (unsaved() && !confirm('Leave your marks and comment without saving?')) return
+    clearDraft()
+    selectedComment = c.id
+    if (c.target.kind === 'step') {
+      const i = entries().findIndex((e) => e.id === c.target.entryId)
+      if (i >= 0) { mode = 'steps'; index = i; render() }
+    } else if (c.target.kind === 'video' && hasVideo()) {
+      if (mode !== 'video') { mode = 'video'; render() }
+      const seek = () => { videoEl.pause(); videoEl.currentTime = c.target.ms / 1000 }
+      if (videoEl.readyState >= 1) seek()
+      else videoEl.addEventListener('loadedmetadata', seek, { once: true })
+    }
+    renderList()
+    renderOverlay()
+    $('frame').scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+
+  function showStep(i) {
+    const e = entries()[i]
+    if (mode === 'video' && e.videoMs != null) {
+      index = i
+      videoEl.currentTime = e.videoMs / 1000
+      renderList()
+      return
+    }
+    if (unsaved() && !confirm('Go to another step? Your marks and comment here haven\'t been saved and will be cleared.')) return
+    clearDraft()
+    mode = 'steps'
+    index = i
+    selectedComment = null
+    render()
+  }
+
+  $('prev').onclick = () => index > 0 && showStep(index - 1)
+  $('next').onclick = () => index < entries().length - 1 && showStep(index + 1)
+  $('modeSteps').onclick = () => {
+    if (mode === 'steps' || (unsaved() && !confirm('Switch to the steps? Your marks and comment haven\'t been saved.'))) return
+    clearDraft(); mode = 'steps'; render()
+  }
+  $('modeVideo').onclick = () => {
+    if (mode === 'video' || (unsaved() && !confirm('Switch to the video? Your marks and comment haven\'t been saved.'))) return
+    clearDraft()
+    mode = 'video'
+    const ms = entry() && entry().videoMs
+    render()
+    if (ms != null) videoEl.addEventListener('loadedmetadata', () => { videoEl.currentTime = ms / 1000 }, { once: true })
+  }
+
+  // --- Send Back ---
+  $('sendBack').onclick = () => {
+    const mineCount = comments.filter((c) => mine.has(c.id) && c.kind !== 'done').length
+    $('sendText').textContent = (unsaved() ? 'You have marks or a comment that aren\'t saved yet: press Not Yet, then Save. ' : '') + (mineCount
+      ? `${content.from} will see your ${mineCount} comment${mineCount === 1 ? '' : 's'} as a to-do list. You can still add more afterwards.`
+      : `You haven't saved any comments. Send it back anyway to tell ${content.from} it all looks good?`)
+    $('sendDialog').showModal()
+  }
+  $('sendCancel').onclick = () => $('sendDialog').close()
+  $('sendOk').onclick = async () => {
+    if (!me) { $('sendDialog').close(); return askName() }
+    const button = $('sendOk')
+    button.disabled = true
+    try {
+      const id = newId()
+      await rpc('add_review_comment', { review: reviewId, secret, comment: { id, parentId: null, author: me, kind: 'done', text: '', target: { kind: 'guide' }, shapes: [], editKey } })
+      remember(id)
+      $('sendDialog').close()
+      $('notice').hidden = false
+      $('notice').className = 'banner'
+      $('notice').textContent = `✓ Sent back to ${content.from}. Thank you! You can keep adding comments if you think of more.`
+    } catch (err) {
+      $('sendText').textContent = `That didn't go through: ${err.message} Try again.`
+    } finally {
+      button.disabled = false
+    }
+  }
+
+  void load()
+})()
+</script>
+</body>
+</html>
