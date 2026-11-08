@@ -59,6 +59,8 @@
   .tools { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
   .tools .tool { min-width: 40px; padding: 6px 10px; }
   .tools .tool.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .ico-hl { display: inline-block; width: 18px; height: 10px; border-radius: 3px; background: #fab005; opacity: .75; transform: rotate(-12deg); vertical-align: middle; }
+  .tools .tool:disabled { opacity: .4; }
   .tools .sep { width: 1px; height: 24px; background: var(--line); margin: 0 6px; }
   .swatch { width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
   .swatch.on { box-shadow: 0 0 0 2px var(--accent); }
@@ -140,6 +142,11 @@
   .center { max-width: 520px; margin: 12vh auto; padding: 24px; background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); text-align: center; }
   dialog { border: 0; border-radius: 12px; padding: 24px; max-width: 440px; width: calc(100% - 32px); background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
   dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog.sent { text-align: center; max-width: 400px; padding: 32px 28px 24px; }
+  dialog.sent h2 { font-size: 26px; margin-top: 12px; }
+  .sent-check { width: 72px; height: 72px; margin: 0 auto; border-radius: 50%; background: #2f9e44; color: #fff; font-size: 40px; line-height: 72px; font-weight: 700; }
+  dialog .row.center-row { justify-content: center; }
+  dialog.sent .primary { min-width: 120px; }
   dialog h2 { margin: 0 0 8px; font-size: 20px; }
   dialog .row { justify-content: flex-end; margin-top: 16px; }
   footer { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 24px; }
@@ -232,6 +239,13 @@
   </form>
 </dialog>
 
+<dialog id="sentDialog" class="sent" aria-labelledby="sentTitle">
+  <div class="sent-check" aria-hidden="true">✓</div>
+  <h2 id="sentTitle">Sent back!</h2>
+  <p id="sentText"></p>
+  <div class="row center-row"><button class="primary" id="sentOk">OK</button></div>
+</dialog>
+
 <dialog id="sendDialog">
   <h2>Send your review back?</h2>
   <p id="sendText"></p>
@@ -243,17 +257,19 @@
   'use strict'
   const CONFIG = {"api":"https://uxpenshsinrybnbgqquu.supabase.co","key":"sb_publishable_m7oJ_FeAs3XAuTN43gMd3w_FCDL9MWa"}
   const BUCKET = 'review-files'
-  const COLORS = ['#e03131', '#f08c00', '#2f9e44', '#1971c2', '#7048e8']
+  const COLORS = ['#e03131', '#f08c00', '#fab005', '#2f9e44', '#1971c2', '#7048e8']
   const TOOLS = [
     { id: 'select', icon: '👆', name: 'Select: click a mark to pick it, drag to move it' },
     { id: 'pin', icon: '📍', name: 'Pin: click a spot' },
     { id: 'box', icon: '▭', name: 'Box: drag around something' },
     { id: 'circle', icon: '◯', name: 'Circle: drag around something' },
     { id: 'arrow', icon: '➜', name: 'Arrow: drag from tail to tip' },
-    { id: 'highlight', icon: '🖍', name: 'Highlight: drag over an area to shade it' },
-    { id: 'pen', icon: '✎', name: 'Pen: draw freely' }
+    { id: 'pen', icon: '✏️', name: 'Pen: draw freely' },
+    { id: 'highlight', icon: '', name: 'Highlighter: drag over words to mark them, like a marker pen' }
   ]
-  const KIND_NAMES = { pin: 'Pin', box: 'Box', circle: 'Circle', arrow: 'Arrow', highlight: 'Highlight', pen: 'Drawing' }
+  const KIND_NAMES = { pin: 'Pin', box: 'Box', circle: 'Circle', arrow: 'Arrow', highlight: 'Highlighter', pen: 'Drawing' }
+  /** Drawn freehand (a list of points) rather than between two corners. Old highlights were boxes, with no points. */
+  const freehand = (s) => s.type === 'pen' || (s.type === 'highlight' && Array.isArray(s.points))
 
   const $ = (id) => document.getElementById(id)
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -309,6 +325,8 @@
   let color = COLORS[0]
   let marks = []              // the marks drawn but not saved yet: { shape, note }
   let picked = null           // the mark picked (its index), to move, delete or write about
+  let undoStack = []          // earlier versions of `marks` (as JSON), for Undo; cleared when the marks are saved or left
+  let redoStack = []
   let wholeGuide = false      // the comment is on the whole guide
   let selectedComment = null  // a comment picked in the list: its drawing is shown
   let replyingTo = null
@@ -398,7 +416,8 @@
       const b = document.createElement('button')
       b.type = 'button'
       b.className = 'tool' + (tool === t.id ? ' on' : '')
-      b.textContent = t.icon
+      if (t.id === 'highlight') b.innerHTML = '<span class="ico-hl" aria-hidden="true"></span>'
+      else b.textContent = t.icon
       b.title = t.name
       b.setAttribute('aria-label', t.name)
       b.setAttribute('aria-pressed', String(tool === t.id))
@@ -415,12 +434,26 @@
       b.setAttribute('aria-label', `Colour ${c}`)
       b.onclick = () => {
         color = c
-        if (picked !== null) marks[picked].shape.color = c
+        if (picked !== null && marks[picked].shape.color !== c) { rememberMarks(); marks[picked].shape.color = c }
         renderTools(); renderOverlay(); renderMarks()
       }
       box.appendChild(b)
     }
     box.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }))
+    for (const [label, title, off, act] of [
+      ['↶', 'Undo (Ctrl+Z)', undoStack.length === 0, undo],
+      ['↷', 'Redo (Ctrl+Y)', redoStack.length === 0, redo]
+    ]) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'tool'
+      b.textContent = label
+      b.title = title
+      b.setAttribute('aria-label', title)
+      b.disabled = off
+      b.onclick = act
+      box.appendChild(b)
+    }
     const del = document.createElement('button')
     del.type = 'button'
     del.textContent = '🗑 Delete Mark'
@@ -470,7 +503,7 @@
       // Marks belong to the moment they were drawn on: playing on clears them (after asking).
       videoEl.addEventListener('play', () => {
         if (marks.length && !confirm('Play on? Your marks on this moment haven\'t been saved and will be cleared.')) { videoEl.pause(); return }
-        if (marks.length) { marks = []; picked = null; renderTools(); renderMarks(); renderUnsaved() }
+        if (marks.length) { marks = []; undoStack = []; redoStack = []; picked = null; renderTools(); renderMarks(); renderUnsaved() }
       })
       for (const ev of ['timeupdate', 'seeked', 'pause', 'play', 'loadedmetadata']) videoEl.addEventListener(ev, () => { renderOverlay(); renderComposerTarget(); renderBlips() })
       picture.style.setProperty('--ar', size.w / size.h)
@@ -666,7 +699,7 @@
     const r = $('blipline').getBoundingClientRect()
     const total = (videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration : content.video.durationMs / 1000) || 0
     if (unsaved() && !confirm('Move to another moment? Your marks here haven\'t been saved and will be cleared.')) return
-    if (marks.length) { marks = []; picked = null; renderTools(); renderMarks(); renderUnsaved() }
+    if (marks.length) { marks = []; undoStack = []; redoStack = []; picked = null; renderTools(); renderMarks(); renderUnsaved() }
     videoEl.pause()
     videoEl.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * total
   })
@@ -692,15 +725,34 @@
   function hookDrawing() {
     let live = null   // a mark being drawn
     let moving = null // a mark being dragged: where the drag started and the shape as it was
-    cancelLive = () => { live = null; moving = null; renderOverlay() }
+    let sizing = null // a picked mark's corner, edge or arrow end being dragged: { edges, shape as it was }
+    cancelLive = () => {
+      if ((moving?.moved || sizing?.moved) && undoStack.length) marks = JSON.parse(undoStack.pop())
+      live = null; moving = null; sizing = null; renderOverlay()
+    }
     svg.addEventListener('pointerdown', (ev) => {
       if (ev.button !== 0 || gesturing) return
+      const handle = ev.target.closest && ev.target.closest('[data-handle]')
+      if (handle && picked !== null) {
+        ev.preventDefault()
+        svg.setPointerCapture(ev.pointerId)
+        rememberMarks()
+        const s0 = marks[picked].shape
+        if (s0.type !== 'arrow') {
+          // Corners in order (top-left first), so the handle names below always mean the same side.
+          const [x1, x2] = [Math.min(s0.x1, s0.x2), Math.max(s0.x1, s0.x2)], [y1, y2] = [Math.min(s0.y1, s0.y2), Math.max(s0.y1, s0.y2)]
+          Object.assign(s0, { x1, x2, y1, y2 })
+        }
+        sizing = { edges: handle.dataset.handle, moved: false }
+        return
+      }
       const hit = ev.target.closest && ev.target.closest('[data-mark]')
       // Pressing on one of your marks picks it and drags it, whatever tool is chosen.
       if (hit) {
         ev.preventDefault()
         pick(Number(hit.dataset.mark))
         svg.setPointerCapture(ev.pointerId)
+        rememberMarks()
         moving = { start: at(ev), shape: JSON.parse(JSON.stringify(marks[picked].shape)), moved: false }
         return
       }
@@ -710,11 +762,27 @@
       svg.setPointerCapture(ev.pointerId)
       const p = at(ev)
       live = { type: tool, color, x1: p.x, y1: p.y, x2: p.x, y2: p.y }
-      if (tool === 'pen') live.points = [p.x, p.y]
+      if (tool === 'pen' || tool === 'highlight') live.points = [p.x, p.y]
       renderOverlay(live)
     })
     svg.addEventListener('pointermove', (ev) => {
       if (gesturing) return
+      if (sizing) {
+        const p = at(ev)
+        const s = marks[picked].shape
+        // Each letter is a side the handle moves: l(eft) r(ight) t(op) b(ottom); an arrow's ends are 1 and 2.
+        for (const e of sizing.edges) {
+          if (e === 'l') s.x1 = r4(Math.min(p.x, s.x2 - 0.005))
+          if (e === 'r') s.x2 = r4(Math.max(p.x, s.x1 + 0.005))
+          if (e === 't') s.y1 = r4(Math.min(p.y, s.y2 - 0.005))
+          if (e === 'b') s.y2 = r4(Math.max(p.y, s.y1 + 0.005))
+          if (e === '1') { s.x1 = r4(p.x); s.y1 = r4(p.y) }
+          if (e === '2') { s.x2 = r4(p.x); s.y2 = r4(p.y) }
+        }
+        sizing.moved = true
+        renderOverlay()
+        return
+      }
       if (moving) {
         const p = at(ev)
         const s0 = moving.shape
@@ -738,10 +806,16 @@
       renderOverlay(live)
     })
     const end = () => {
-      if (moving) { moving = null; return }
+      if (sizing || moving) {
+        // A click that didn't move anything isn't a change to undo.
+        if (!(sizing || moving).moved) undoStack.pop()
+        sizing = null; moving = null
+        renderTools()
+        return
+      }
       if (!live) return
       const small = Math.abs(live.x2 - live.x1) < 0.005 && Math.abs(live.y2 - live.y1) < 0.005
-      if (live.type === 'pen') {
+      if (live.type === 'pen' || live.type === 'highlight') {
         const xs = live.points.filter((_, i) => i % 2 === 0), ys = live.points.filter((_, i) => i % 2 === 1)
         Object.assign(live, { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) })
         if (live.points.length >= 4) addMark(live)
@@ -762,6 +836,7 @@
 
   /** A new mark: numbered, picked, and its note box ready to type in. */
   function addMark(shape) {
+    rememberMarks()
     marks.push({ shape: round(shape), note: '' })
     picked = marks.length - 1
     wholeGuide = false
@@ -778,13 +853,34 @@
 
   function deleteMark(i) {
     if (i === null || !marks[i]) return
+    rememberMarks()
     marks.splice(i, 1)
     picked = null
     renderTools(); renderOverlay(); renderMarks(); renderUnsaved()
   }
 
+  /** Keeps the marks as they are now, before a change, so Undo can bring them back. */
+  function rememberMarks() {
+    undoStack.push(JSON.stringify(marks))
+    if (undoStack.length > 100) undoStack.shift()
+    redoStack = []
+  }
+  function restore(from, to) {
+    if (!from.length) return
+    to.push(JSON.stringify(marks))
+    marks = JSON.parse(from.pop())
+    picked = picked !== null && picked < marks.length ? picked : null
+    renderTools(); renderOverlay(); renderMarks(); renderComposer(); renderUnsaved()
+  }
+  const undo = () => restore(undoStack, redoStack)
+  const redo = () => restore(redoStack, undoStack)
+
   document.addEventListener('keydown', (e) => {
     const typing = e.target.closest && e.target.closest('input, textarea, dialog')
+    const ctrl = e.ctrlKey || e.metaKey
+    if (!typing && ctrl && !e.altKey && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return }
+    if (!typing && ctrl && !e.altKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return }
+    if (!typing && e.key === 'Escape' && tool !== 'select' && picked === null) { tool = 'select'; renderTools(); renderFrameMode(); return }
     if (!typing && (e.key === 'Delete' || e.key === 'Backspace') && picked !== null) { e.preventDefault(); deleteMark(picked); return }
     if (!typing && e.key === 'Escape' && picked !== null) { pick(null); return }
     if (typing || mode !== 'steps') return
@@ -831,9 +927,9 @@
   function hitSvg(s, w, h, base) {
     const b = boundsOf(s, w, h, base)
     const pad = Math.max(6, base * 0.008)
+    if (freehand(s)) return `<polyline class="hit" points="${penPoints(s, w, h)}" stroke="transparent" stroke-width="${Math.max(pad * 3, Math.max(2, base * 0.004) * 5)}" fill="none" stroke-linecap="round"/>`
     if (s.type === 'pin' || s.type === 'highlight') return `<rect class="hitfill" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="transparent"/>`
     if (s.type === 'arrow') return `<line class="hit" x1="${s.x1 * w}" y1="${s.y1 * h}" x2="${s.x2 * w}" y2="${s.y2 * h}" stroke="transparent" stroke-width="${pad * 3}"/>`
-    if (s.type === 'pen') return `<polyline class="hit" points="${penPoints(s, w, h)}" stroke="transparent" stroke-width="${pad * 3}" fill="none"/>`
     if (s.type === 'circle') return `<ellipse class="hit" cx="${b.x + b.w / 2}" cy="${b.y + b.h / 2}" rx="${b.w / 2}" ry="${b.h / 2}" stroke="transparent" stroke-width="${pad * 3}" fill="none"/>`
     return `<rect class="hit" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" stroke="transparent" stroke-width="${pad * 3}" fill="none"/>`
   }
@@ -842,6 +938,18 @@
     const b = boundsOf(s, w, h, base)
     const pad = Math.max(6, base * 0.006)
     const sw = Math.max(1.5, base * 0.0015)
+    // Handles to resize: corners and edges of boxes, circles and old (box) highlights; both ends of an arrow.
+    const hs = Math.max(7, base * 0.007)
+    const handle = (x, y, edges, cursor) =>
+      `<rect data-handle="${edges}" class="handle" x="${x - hs}" y="${y - hs}" width="${hs * 2}" height="${hs * 2}" rx="${hs * 0.3}" fill="#fff" stroke="#1971c2" stroke-width="${sw * 1.5}" style="cursor:${cursor}"/>`
+    if (s.type === 'arrow') return handle(s.x1 * w, s.y1 * h, '1', 'move') + handle(s.x2 * w, s.y2 * h, '2', 'move')
+    let handles = ''
+    if (s.type === 'box' || s.type === 'circle' || (s.type === 'highlight' && !freehand(s))) {
+      const L = b.x, R = b.x + b.w, T = b.y, B = b.y + b.h, MX = L + b.w / 2, MY = T + b.h / 2
+      handles = handle(L, T, 'lt', 'nwse-resize') + handle(R, T, 'rt', 'nesw-resize') + handle(L, B, 'lb', 'nesw-resize') + handle(R, B, 'rb', 'nwse-resize') +
+        handle(MX, T, 't', 'ns-resize') + handle(MX, B, 'b', 'ns-resize') + handle(L, MY, 'l', 'ew-resize') + handle(R, MY, 'r', 'ew-resize')
+      return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#1971c2" stroke-width="${sw}" stroke-dasharray="${sw * 6} ${sw * 4}"/>` + handles
+    }
     return `<rect x="${b.x - pad}" y="${b.y - pad}" width="${b.w + pad * 2}" height="${b.h + pad * 2}" fill="none" stroke="#fff" stroke-width="${sw * 3}"/>` +
       `<rect x="${b.x - pad}" y="${b.y - pad}" width="${b.w + pad * 2}" height="${b.h + pad * 2}" fill="none" stroke="#1971c2" stroke-width="${sw * 1.5}" stroke-dasharray="${sw * 6} ${sw * 4}"/>`
   }
@@ -879,6 +987,8 @@
       case 'box':
         return `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="${sw}" ${halo}/><rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="${sw}" stroke="${c}" stroke-width="${sw}" fill="none"/>`
       case 'highlight':
+        // A marker pen: a thick see-through stroke. (Older highlights were shaded boxes, still shown as boxes.)
+        if (freehand(s)) return `<polyline points="${penPoints(s, w, h)}" stroke="${c}" stroke-opacity=".38" stroke-width="${sw * 5}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
         return `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="${sw}" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="${sw * 0.6}"/>`
       case 'arrow': {
         const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len
@@ -909,7 +1019,10 @@
       input.value = m.note
       input.addEventListener('input', () => { m.note = input.value; renderUnsaved() })
       input.addEventListener('focus', () => { if (picked !== i) { picked = i; renderTools(); renderOverlay(); box.querySelectorAll('.markrow').forEach((r, j) => r.classList.toggle('on', j === i)) } })
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save() } })
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); save() }
+        if (e.key === 'Escape') { e.preventDefault(); input.blur() }
+      })
       row.querySelector('.del').onclick = () => deleteMark(i)
       box.appendChild(row)
     })
@@ -941,7 +1054,7 @@
   $('wholeGuide').addEventListener('click', () => {
     if (!wholeGuide && marks.length && !confirm('Comments on the whole guide have no marks. Clear your marks?')) return
     wholeGuide = !wholeGuide
-    if (wholeGuide) { marks = []; picked = null; tool = 'select'; renderTools(); renderFrameMode(); renderOverlay(); renderMarks(); renderUnsaved() }
+    if (wholeGuide) { marks = []; undoStack = []; redoStack = []; picked = null; tool = 'select'; renderTools(); renderFrameMode(); renderOverlay(); renderMarks(); renderUnsaved() }
     renderComposer()
   })
   $('suggestOn').addEventListener('change', () => {
@@ -955,7 +1068,7 @@
     $('text').value = ''
     $('suggestOn').checked = false
     $('suggestion').hidden = true
-    marks = []
+    marks = []; undoStack = []; redoStack = []
     picked = null
     tool = 'select'
     wholeGuide = false
@@ -1186,6 +1299,7 @@
     $('sendDialog').showModal()
   }
   $('sendCancel').onclick = () => $('sendDialog').close()
+  $('sentOk').onclick = () => $('sentDialog').close()
   $('sendOk').onclick = async () => {
     if (!me) { $('sendDialog').close(); return askName() }
     const button = $('sendOk')
@@ -1195,9 +1309,11 @@
       await rpc('add_review_comment', { review: reviewId, secret, comment: { id, parentId: null, author: me, kind: 'done', text: '', target: { kind: 'guide' }, shapes: [], editKey } })
       remember(id)
       $('sendDialog').close()
+      $('sentText').textContent = `${content.from} has your review and will see your comments as a to-do list. Thank you! You can keep adding comments if you think of more.`
+      $('sentDialog').showModal()
       $('notice').hidden = false
       $('notice').className = 'banner'
-      $('notice').textContent = `✓ Sent back to ${content.from}. Thank you! You can keep adding comments if you think of more.`
+      $('notice').textContent = `✓ Sent back to ${content.from}.`
     } catch (err) {
       $('sendText').textContent = `That didn't go through: ${err.message} Try again.`
     } finally {
