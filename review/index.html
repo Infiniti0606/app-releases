@@ -101,16 +101,22 @@
   .noteicon { flex: none; }
 
   .composer { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
-  .unsaved { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px;
-    background: var(--note); border-left: 4px solid var(--note-line); font-size: 14px; }
-  .unsaved span { flex: 1 1 240px; }
-  .marks { display: grid; gap: 6px; }
-  .markrow { display: flex; gap: 8px; align-items: center; padding: 4px; border-radius: 8px; border: 2px solid transparent; }
-  .markrow.on { border-color: var(--accent); }
-  .markrow input { flex: 1; min-width: 0; }
-  .marknum { flex: none; width: 26px; height: 26px; border-radius: 13px; color: #fff; font-weight: 700; font-size: 13px; line-height: 26px; text-align: center; }
-  .markkind { flex: none; width: 76px; font-size: 13px; color: var(--muted); }
-  .markrow .del { flex: none; padding: 4px 8px; }
+  /* The speech bubble that opens on the picture: type a comment right where you clicked. */
+  .bubble { position: absolute; z-index: 3; width: min(320px, calc(100% - 16px)); display: grid; gap: 8px; padding: 10px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,.28); }
+  .bubble textarea { min-height: 64px; resize: vertical; }
+  .bubble .row { justify-content: flex-end; }
+  .bubble .hint { flex: 1; font-size: 12px; }
+  .bubble.shake { animation: shake .3s; }
+  @keyframes shake { 25% { transform: translateX(-6px) } 75% { transform: translateX(6px) } }
+  .peek p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .peek .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .peek .meta b { color: var(--text); }
+  .peek .x { margin-left: auto; border: 0; padding: 2px 8px; }
+  .picture svg .saved { pointer-events: visiblePainted; cursor: pointer; }
+  .picture svg .catch { pointer-events: all; }
+  /* On the video, drawing only covers the picture, so the video's own controls along the bottom keep working. */
+  .framewrap.video .picture.drawing svg { pointer-events: none; }
   .composer label.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
   .target { font-weight: 600; }
 
@@ -182,10 +188,9 @@
         <div class="switch" id="modeSwitch" hidden>
           <button id="modeSteps">🖼 Steps</button><button id="modeVideo">▶ Video</button>
         </div>
-        <p class="hint" id="howTo">Pick a tool to mark up the picture, then type your comment below.</p>
+        <p class="hint" id="howTo">Click anywhere on the picture to leave a comment.</p>
       </div>
       <div class="tools" id="tools" role="toolbar" aria-label="Markup tools"></div>
-      <div class="unsaved" id="unsaved" hidden><span id="unsavedText"></span><button type="button" class="primary" id="saveTop">💾 Save</button></div>
       <div class="framewrap" id="framewrap">
         <div class="frame" id="frame"></div>
         <div class="zoombar" id="zoombar" role="group" aria-label="Zoom">
@@ -194,6 +199,11 @@
           <button type="button" id="zoomIn" title="Zoom in (or pinch, or Ctrl + scroll)" aria-label="Zoom in">+</button>
           <button type="button" id="zoomFit" title="Fit the whole picture (or double-click it)">Fit</button>
         </div>
+        <form class="bubble" id="bubble" hidden>
+          <textarea id="bubbleText" maxlength="5000" placeholder="Type your comment…" aria-label="Your comment"></textarea>
+          <div class="row"><span class="hint" id="bubbleState">Enter to post</span><button type="button" id="bubbleCancel">Cancel</button><button type="submit" class="primary" id="bubblePost">Post</button></div>
+        </form>
+        <div class="bubble peek" id="peek" hidden></div>
       </div>
       <div class="blips" id="blips" hidden>
         <div class="blipline" id="blipline"></div>
@@ -206,17 +216,15 @@
 
       <form class="composer" id="composer">
         <div class="row" style="justify-content: space-between">
-          <span>Your comments on <span class="target" id="targetLabel"></span></span>
-          <button type="button" class="link" id="wholeGuide">Comment on the whole guide instead</button>
+          <span class="hint">Or just write about <span class="target" id="targetLabel"></span></span>
+          <button type="button" class="link" id="wholeGuide">Comment on the Whole Guide</button>
         </div>
-        <div class="marks" id="marks"></div>
-        <textarea id="text" placeholder="What should change?" maxlength="5000"></textarea>
+        <textarea id="text" placeholder="Type a comment…" maxlength="5000"></textarea>
         <label class="check" id="suggestRow"><input type="checkbox" id="suggestOn"> Suggest new wording for this step</label>
         <textarea id="suggestion" hidden maxlength="5000"></textarea>
         <div class="row" style="justify-content: flex-end">
           <span class="hint" id="postState"></span>
-          <button type="button" id="clearDraft">Clear</button>
-          <button type="submit" class="primary" id="post">💾 Save</button>
+          <button type="submit" class="primary" id="post">💬 Post</button>
         </div>
       </form>
     </main>
@@ -229,7 +237,7 @@
       <div class="list" id="list"></div>
     </aside>
   </div>
-  <footer>Your comments are kept once you press Save. Only people with this link can see this page.</footer>
+  <footer>Each comment is saved as soon as you post it. Only people with this link can see this page.</footer>
 </div>
 
 <dialog id="nameDialog">
@@ -263,15 +271,14 @@
   const BUCKET = 'review-files'
   const COLORS = ['#e03131', '#f08c00', '#fab005', '#2f9e44', '#1971c2', '#7048e8']
   const TOOLS = [
-    { id: 'select', icon: '👆', name: 'Select: click a mark to pick it, drag to move it' },
-    { id: 'pin', icon: '📍', name: 'Pin: click a spot' },
+    { id: 'pin', icon: '💬', name: 'Comment: click anywhere and type' },
+    { id: 'select', icon: '👆', name: 'Move: drag your marks, or drag to look around when zoomed in' },
     { id: 'box', icon: '▭', name: 'Box: drag around something' },
     { id: 'circle', icon: '◯', name: 'Circle: drag around something' },
     { id: 'arrow', icon: '➜', name: 'Arrow: drag from tail to tip' },
     { id: 'pen', icon: '✏️', name: 'Pen: draw freely' },
     { id: 'highlight', icon: '', name: 'Highlighter: drag over words to mark them, like a marker pen' }
   ]
-  const KIND_NAMES = { pin: 'Pin', box: 'Box', circle: 'Circle', arrow: 'Arrow', highlight: 'Highlighter', pen: 'Drawing' }
   /** Drawn freehand (a list of points) rather than between two corners. Old highlights were boxes, with no points. */
   const freehand = (s) => s.type === 'pen' || (s.type === 'highlight' && Array.isArray(s.points))
 
@@ -326,10 +333,10 @@
   let mode = 'steps'          // 'steps' or 'video'
   let tab = 'steps'           // the side list: 'steps' or 'comments'
   let index = 0               // the step shown
-  let tool = 'select'
+  let tool = 'pin'            // 'pin' is the Comment tool (a speech bubble)
   let color = COLORS[0]
-  let marks = []              // the marks drawn but not saved yet: { shape, note }
-  let picked = null           // the mark picked (its index), to move, delete or write about
+  let marks = []              // the marks drawn for the comment being typed in the bubble: { shape }
+  let picked = null           // the mark picked (its index), to move or delete
   let undoStack = []          // earlier versions of `marks` (as JSON), for Undo; cleared when the marks are saved or left
   let redoStack = []
   let wholeGuide = false      // the comment is on the whole guide
@@ -341,7 +348,8 @@
   const entry = () => entries()[index]
   const hasVideo = () => !!content.video
   const hasSteps = () => entries().length > 0
-  const unsaved = () => marks.length > 0 || $('text').value.trim() !== '' || ($('suggestOn').checked && $('suggestion').value.trim() !== '')
+  const unsaved = () => marks.length > 0 || $('bubbleText').value.trim() !== '' || $('text').value.trim() !== '' || ($('suggestOn').checked && $('suggestion').value.trim() !== '')
+  let afterName = null        // what to do once the name is given (posting, when it was asked for then)
 
   async function load() {
     if (!CONFIG.api || !reviewId || !secret) return problem("This link isn't complete. Copy the whole link from the message you were sent.")
@@ -408,6 +416,7 @@
     me = name
     store.set('review-name', me)
     $('myName').textContent = me
+    if (afterName) { const then = afterName; afterName = null; setTimeout(then, 0) }
   })
   $('emailInput').addEventListener('input', () => $('emailInput').setCustomValidity(''))
   $('nameDialog').addEventListener('cancel', (e) => { if (!me) e.preventDefault() })
@@ -418,7 +427,10 @@
 
   // --- Where a comment goes ---
   function currentTarget() {
-    if (wholeGuide) return { kind: 'guide' }
+    return wholeGuide ? { kind: 'guide' } : placeTarget()
+  }
+  /** The step or video moment being looked at (where the bubble's comment goes). */
+  function placeTarget() {
     if (mode === 'video') return { kind: 'video', ms: Math.round((videoEl ? videoEl.currentTime : 0) * 1000) }
     return entry() ? { kind: 'step', entryId: entry().id } : { kind: 'guide' }
   }
@@ -443,7 +455,7 @@
       b.title = t.name
       b.setAttribute('aria-label', t.name)
       b.setAttribute('aria-pressed', String(tool === t.id))
-      b.onclick = () => { tool = t.id; if (tool !== 'select') { wholeGuide = false; videoEl?.pause() } renderTools(); renderFrameMode(); renderComposer() }
+      b.onclick = () => { tool = t.id; if (tool !== 'select' && tool !== 'pin') videoEl?.pause(); renderTools(); renderFrameMode() }
       box.appendChild(b)
     }
     box.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }))
@@ -457,7 +469,7 @@
       b.onclick = () => {
         color = c
         if (picked !== null && marks[picked].shape.color !== c) { rememberMarks(); marks[picked].shape.color = c }
-        renderTools(); renderOverlay(); renderMarks()
+        renderTools(); renderOverlay()
       }
       box.appendChild(b)
     }
@@ -478,7 +490,9 @@
     }
     const del = document.createElement('button')
     del.type = 'button'
-    del.textContent = '🗑 Delete Mark'
+    del.className = 'tool'
+    del.textContent = '🗑'
+    del.setAttribute('aria-label', 'Delete the picked mark')
     del.title = 'Delete the picked mark (Delete key)'
     del.disabled = picked === null
     del.onclick = () => deleteMark(picked)
@@ -496,7 +510,6 @@
     renderFrame()
     renderList()
     renderComposer()
-    renderMarks()
   }
 
   function renderFrame() {
@@ -524,8 +537,9 @@
       })
       // Marks belong to the moment they were drawn on: playing on clears them (after asking).
       videoEl.addEventListener('play', () => {
-        if (marks.length && !confirm('Play on? Your marks on this moment haven\'t been saved and will be cleared.')) { videoEl.pause(); return }
-        if (marks.length) { marks = []; undoStack = []; redoStack = []; picked = null; renderTools(); renderMarks(); renderUnsaved() }
+        if (bubbleOpen() && unsavedBubble() && !confirm('Play on? Your comment on this moment hasn\'t been posted and will be cleared.')) { videoEl.pause(); return }
+        discardMarks()
+        closePeek()
       })
       for (const ev of ['timeupdate', 'seeked', 'pause', 'play', 'loadedmetadata']) videoEl.addEventListener(ev, () => { renderOverlay(); renderComposerTarget(); renderBlips() })
       picture.style.setProperty('--ar', size.w / size.h)
@@ -712,7 +726,7 @@
     line.innerHTML = html
     $('bliphint').textContent = top.length
       ? `${top.length} comment${top.length === 1 ? '' : 's'} on the video: click a dot to see it (a number means several close together).${entries().some((e) => e.videoMs != null) ? ' Thin lines are where each step starts.' : ''}`
-      : 'Comments you save on the video show here as numbered dots.'
+      : 'Comments you post on the video show here as dots.'
   }
   $('blipline').addEventListener('click', (ev) => {
     if (!videoEl) return
@@ -720,8 +734,8 @@
     if (blip) { const c = comments.find((x) => x.id === blip.dataset.id); if (c) { goTo(c); tab = 'comments'; renderList() } return }
     const r = $('blipline').getBoundingClientRect()
     const total = (videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration : content.video.durationMs / 1000) || 0
-    if (unsaved() && !confirm('Move to another moment? Your marks here haven\'t been saved and will be cleared.')) return
-    if (marks.length) { marks = []; undoStack = []; redoStack = []; picked = null; renderTools(); renderMarks(); renderUnsaved() }
+    if (unsavedBubble() && !confirm('Move to another moment? Your comment here hasn\'t been posted and will be cleared.')) return
+    discardMarks()
     videoEl.pause()
     videoEl.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * total
   })
@@ -729,13 +743,17 @@
   function renderFrameMode() {
     if (picture) {
       // Fingers draw with a drawing tool, and move around a zoomed picture; otherwise they scroll the page.
-      picture.style.touchAction = tool !== 'select' || zoom > 1 ? 'none' : 'pan-y'
+      // The Comment tool only needs a tap, so fingers still scroll with it.
+      picture.style.touchAction = tool === 'pin' ? (zoom > 1 ? 'pan-x pan-y' : 'pan-y') : tool !== 'select' || zoom > 1 ? 'none' : 'pan-y'
       picture.classList.toggle('pannable', tool === 'select' && zoom > 1)
     }
     if (picture) picture.classList.toggle('drawing', tool !== 'select')
     $('howTo').textContent = tool === 'select'
-      ? 'Pick a tool to mark up the picture. Click a mark to move or delete it.'
-      : mode === 'video' ? 'Draw on the paused video. Each mark gets a number and its own note below.' : 'Draw on the screenshot. Each mark gets a number and its own note below.'
+      ? 'Drag your marks to move them. Press 💬 to comment again.'
+      : tool === 'pin'
+        ? (mode === 'video' ? 'Click on the video to pause it and leave a comment right there.' : 'Click anywhere on the picture to leave a comment.')
+        : 'Draw around what needs changing, then type your comment.'
+    positionBubble()
   }
 
   /** The point under the pointer, as fractions of the picture. */
@@ -778,7 +796,16 @@
         moving = { start: at(ev), shape: JSON.parse(JSON.stringify(marks[picked].shape)), moved: false }
         return
       }
+      // Someone's comment on the picture: show what it says.
+      const saved = ev.target.closest && ev.target.closest('[data-comment]')
+      if (saved && !marks.length) { ev.preventDefault(); openPeek(saved.dataset.comment); return }
+      closePeek()
       if (tool === 'select') { if (picked !== null) pick(null); return }
+      if (tool === 'pin' && bubbleOpen()) {
+        // A comment is being typed: keep it, rather than losing it to a stray click.
+        if (unsavedText()) { ev.preventDefault(); nudgeBubble(); return }
+        discardMarks()
+      }
       ev.preventDefault()
       videoEl?.pause()
       svg.setPointerCapture(ev.pointerId)
@@ -847,7 +874,8 @@
       renderOverlay()
     }
     svg.addEventListener('pointerup', end)
-    svg.addEventListener('pointercancel', end)
+    // The browser took the touch over to scroll: a comment wasn't meant, but a drag or drawing still ends.
+    svg.addEventListener('pointercancel', () => { if (live && live.type === 'pin') { live = null; renderOverlay() } else end() })
   }
   const r4 = (v) => Math.round(v * 10000) / 10000
   function round(s) {
@@ -856,21 +884,19 @@
     return out
   }
 
-  /** A new mark: numbered, picked, and its note box ready to type in. */
+  /** A new mark: the bubble opens beside it to type the comment (several marks can share one comment). */
   function addMark(shape) {
     rememberMarks()
-    marks.push({ shape: round(shape), note: '' })
-    picked = marks.length - 1
-    wholeGuide = false
-    renderTools(); renderMarks(); renderComposer(); renderOverlay(); renderUnsaved()
-    const input = $('marks').querySelector(`[data-note="${picked}"]`)
-    input?.focus({ preventScroll: true })
+    marks.push({ shape: round(shape) })
+    picked = shape.type === 'pin' ? null : marks.length - 1
+    renderTools(); renderOverlay()
+    openBubble()
   }
 
   function pick(i) {
     picked = i
     if (i !== null && marks[i]) color = marks[i].shape.color
-    renderTools(); renderOverlay(); renderMarks()
+    renderTools(); renderOverlay()
   }
 
   function deleteMark(i) {
@@ -878,8 +904,145 @@
     rememberMarks()
     marks.splice(i, 1)
     picked = null
-    renderTools(); renderOverlay(); renderMarks(); renderUnsaved()
+    renderTools(); renderOverlay(); syncBubble()
   }
+
+  /** Throws away the marks not posted, and the bubble with them. */
+  function discardMarks() {
+    marks = []; undoStack = []; redoStack = []; picked = null
+    closeBubble()
+    renderTools(); renderOverlay()
+  }
+
+  // --- The speech bubble: type the comment right where you clicked or drew ---
+  const bubbleOpen = () => !$('bubble').hidden
+  const unsavedText = () => $('bubbleText').value.trim() !== ''
+  const unsavedBubble = () => marks.length > 0 || unsavedText()
+  const touchy = matchMedia('(pointer: coarse)').matches
+
+  function openBubble() {
+    closePeek()
+    const was = bubbleOpen()
+    $('bubble').hidden = false
+    $('bubbleState').textContent = touchy ? '' : 'Enter to post'
+    positionBubble()
+    if (!was || document.activeElement !== $('bubbleText')) $('bubbleText').focus({ preventScroll: !touchy })
+  }
+  function closeBubble() {
+    $('bubble').hidden = true
+    $('bubbleText').value = ''
+  }
+  /** After Undo or Delete: with no marks and nothing typed, there's nothing for the bubble to be about. */
+  function syncBubble() {
+    if (bubbleOpen() && !marks.length && !unsavedText()) closeBubble()
+    else if (bubbleOpen()) positionBubble()
+  }
+  function nudgeBubble() {
+    const b = $('bubble')
+    b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake')
+    $('bubbleState').textContent = 'Post or cancel this one first.'
+    $('bubbleText').focus({ preventScroll: true })
+  }
+
+  /** Where a bubble goes: just below and right of `spot` (screen pixels), kept inside the picture's area. */
+  function place(el, spot) {
+    if (el.hidden || !spot) return
+    const wrap = $('framewrap').getBoundingClientRect()
+    const f = $('frame').getBoundingClientRect()
+    const x = Math.min(f.right, Math.max(f.left, spot.x)) - wrap.left
+    const y = Math.min(f.bottom, Math.max(f.top, spot.y)) - wrap.top
+    const bw = el.offsetWidth, bh = el.offsetHeight
+    let left = x + 12, top = y + 12
+    if (left + bw > wrap.width - 8) left = x - bw - 12
+    left = Math.max(8, Math.min(left, wrap.width - bw - 8))
+    if (top + bh > wrap.height - 8 && y - bh - 12 >= 8) top = y - bh - 12
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+  }
+  /** The bottom-right of a shape, in screen pixels. */
+  function cornerOf(s) {
+    if (!svg) return null
+    const r = svg.getBoundingClientRect()
+    const b = boundsOf(s, size.w, size.h, Math.max(size.w, size.h))
+    return { x: r.left + ((b.x + b.w) / size.w) * r.width, y: r.top + ((b.y + b.h) / size.h) * r.height }
+  }
+  let bubbleSpot = null
+  function positionBubble() {
+    if (!bubbleOpen()) return
+    if (marks.length) bubbleSpot = cornerOf(marks[marks.length - 1].shape)
+    place($('bubble'), bubbleSpot)
+  }
+  $('frame').addEventListener('scroll', () => { positionBubble(); positionPeek() })
+  window.addEventListener('resize', () => { positionBubble(); positionPeek() })
+
+  $('bubbleText').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !touchy) { e.preventDefault(); void postBubble() }
+    if (e.key === 'Escape') { e.preventDefault(); cancelBubble() }
+  })
+  $('bubbleText').addEventListener('input', () => { if ($('bubbleState').textContent !== 'Posting…') $('bubbleState').textContent = touchy ? '' : 'Enter to post' })
+  $('bubbleCancel').onclick = () => cancelBubble()
+  $('bubble').addEventListener('submit', (e) => { e.preventDefault(); void postBubble() })
+  function cancelBubble() { discardMarks() }
+
+  async function postBubble() {
+    if (!me) { afterName = postBubble; return askName() }
+    const text = $('bubbleText').value.trim()
+    if (!text) { $('bubbleState').textContent = 'Type your comment first.'; $('bubbleText').focus(); return }
+    const comment = { id: newId(), parentId: null, author: me, kind: 'comment', text, target: placeTarget(), shapes: marks.map((m) => m.shape) }
+    $('bubblePost').disabled = true
+    $('bubbleState').textContent = 'Posting…'
+    try {
+      await post(comment)
+      selectedComment = comment.id
+      discardMarks()
+      tab = 'comments'
+      flash('✓ Comment posted')
+    } catch (err) {
+      $('bubbleState').textContent = `Not posted: ${err.message} Try again.`
+    } finally {
+      $('bubblePost').disabled = false
+      renderList(); renderOverlay()
+      void reload()
+    }
+  }
+
+  /** A short "done" note where the instructions are. */
+  function flash(text) {
+    $('howTo').textContent = text
+    setTimeout(() => { if ($('howTo').textContent === text) renderFrameMode() }, 2500)
+  }
+
+  // --- Someone's comment, opened from the picture ---
+  let peekId = null
+  function openPeek(id) {
+    const c = comments.find((x) => x.id === id)
+    if (!c) return
+    peekId = id
+    selectedComment = id
+    const replies = comments.filter((r) => r.parentId === id && r.kind !== 'done').length
+    const el = $('peek')
+    el.innerHTML = `<div class="meta"><b>${esc(c.author)}</b><span>${esc(when(c.createdAt))}</span><button type="button" class="x" aria-label="Close">✕</button></div>` +
+      (c.text ? `<p>${esc(c.text)}</p>` : '') +
+      (c.suggestion ? `<div class="suggest"><b>Suggested wording</b>${esc(c.suggestion)}</div>` : '') +
+      `<div class="row" style="justify-content:flex-end"><button type="button" class="reply">↩ Reply${replies ? ` (${replies})` : ''}</button></div>`
+    el.querySelector('.x').onclick = closePeek
+    el.querySelector('.reply').onclick = () => {
+      closePeek()
+      tab = 'comments'; replyingTo = id; renderList()
+      $('list').querySelector('.comment.on')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+    el.hidden = false
+    positionPeek()
+    tab = 'comments'
+    renderList(); renderOverlay()
+  }
+  function positionPeek() {
+    if ($('peek').hidden) return
+    const c = comments.find((x) => x.id === peekId)
+    if (!c || !c.shapes || !c.shapes.length) return closePeek()
+    place($('peek'), cornerOf(c.shapes[c.shapes.length - 1]))
+  }
+  function closePeek() { $('peek').hidden = true; peekId = null }
 
   /** Keeps the marks as they are now, before a change, so Undo can bring them back. */
   function rememberMarks() {
@@ -892,7 +1055,9 @@
     to.push(JSON.stringify(marks))
     marks = JSON.parse(from.pop())
     picked = picked !== null && picked < marks.length ? picked : null
-    renderTools(); renderOverlay(); renderMarks(); renderComposer(); renderUnsaved()
+    renderTools(); renderOverlay()
+    if (marks.length && !bubbleOpen()) openBubble()
+    syncBubble()
   }
   const undo = () => restore(undoStack, redoStack)
   const redo = () => restore(redoStack, undoStack)
@@ -902,7 +1067,9 @@
     const ctrl = e.ctrlKey || e.metaKey
     if (!typing && ctrl && !e.altKey && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return }
     if (!typing && ctrl && !e.altKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return }
-    if (!typing && e.key === 'Escape' && tool !== 'select' && picked === null) { tool = 'select'; renderTools(); renderFrameMode(); return }
+    if (!typing && e.key === 'Escape' && !$('peek').hidden) { closePeek(); renderOverlay(); return }
+    if (!typing && e.key === 'Escape' && bubbleOpen()) { cancelBubble(); return }
+    if (!typing && e.key === 'Escape' && tool !== 'pin' && picked === null) { tool = 'pin'; renderTools(); renderFrameMode(); return }
     if (!typing && (e.key === 'Delete' || e.key === 'Backspace') && picked !== null) { e.preventDefault(); deleteMark(picked); return }
     if (!typing && e.key === 'Escape' && picked !== null) { pick(null); return }
     if (typing || mode !== 'steps') return
@@ -925,14 +1092,20 @@
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
     const base = Math.max(w, h)
     let out = ''
+    // On the video, only the picture above its controls takes drawing (see the CSS), so the controls still work.
+    if (mode === 'video' && tool !== 'select') {
+      const r = svg.getBoundingClientRect()
+      const bar = r.height ? Math.min(h * 0.4, (56 / r.height) * h) : 0
+      out += `<rect class="catch" x="0" y="0" width="${w}" height="${h - bar}" fill="transparent"/>`
+    }
     const here = commentsHere()
     const anyPicked = here.some((c) => c.id === selectedComment)
     for (const c of here) {
       const faint = (anyPicked && selectedComment !== c.id) || marks.length > 0
-      out += `<g opacity="${faint ? 0.35 : 0.9}">` + c.shapes.map((s) => shapeSvg(s, w, h, base)).join('') + '</g>'
+      out += `<g class="${faint ? '' : 'saved'}" data-comment="${esc(c.id)}" opacity="${faint ? 0.35 : 0.9}"><title>${esc(c.author)}: ${esc(c.text)}</title>` + c.shapes.map((s) => shapeSvg(s, w, h, base)).join('') + '</g>'
     }
     marks.forEach((m, i) => {
-      out += `<g class="mark" data-mark="${i}">${hitSvg(m.shape, w, h, base)}${shapeSvg(m.shape, w, h, base)}${numberSvg(m.shape, i + 1, w, h, base)}</g>`
+      out += `<g class="mark" data-mark="${i}">${hitSvg(m.shape, w, h, base)}${shapeSvg(m.shape, w, h, base)}</g>`
       if (i === picked) out += pickedSvg(m.shape, w, h, base)
     })
     if (live) out += shapeSvg(live, w, h, base)
@@ -941,7 +1114,7 @@
 
   /** The box around a shape, in picture pixels. */
   function boundsOf(s, w, h, base) {
-    if (s.type === 'pin') { const r = Math.max(8, base * 0.011); return { x: s.x1 * w - r * 1.6, y: s.y1 * h - r * 4.3, w: r * 3.2, h: r * 4.3 } }
+    if (s.type === 'pin') { const r = Math.max(8, base * 0.011); return { x: s.x1 * w, y: s.y1 * h - r * 3.2, w: r * 3.6, h: r * 3.2 } }
     return { x: Math.min(s.x1, s.x2) * w, y: Math.min(s.y1, s.y2) * h, w: Math.abs(s.x2 - s.x1) * w, h: Math.abs(s.y2 - s.y1) * h }
   }
 
@@ -976,16 +1149,6 @@
       `<rect x="${b.x - pad}" y="${b.y - pad}" width="${b.w + pad * 2}" height="${b.h + pad * 2}" fill="none" stroke="#1971c2" stroke-width="${sw * 1.5}" stroke-dasharray="${sw * 6} ${sw * 4}"/>`
   }
 
-  /** The mark's number, at its top-left, matching its note below. */
-  function numberSvg(s, n, w, h, base) {
-    const b = boundsOf(s, w, h, base)
-    const r = Math.max(10, base * 0.012)
-    const cx = s.type === 'pin' ? b.x + b.w + r * 0.6 : b.x
-    const cy = s.type === 'pin' ? b.y + r * 0.6 : b.y
-    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${esc(s.color)}" stroke="#fff" stroke-width="${r * 0.18}"/>` +
-      `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${r * 1.2}" font-weight="700" font-family="Segoe UI, system-ui, sans-serif">${n}</text>`
-  }
-
   function penPoints(s, w, h) {
     const pts = []
     for (let i = 0; i + 1 < (s.points || []).length; i += 2) pts.push(`${s.points[i] * w},${s.points[i + 1] * h}`)
@@ -1000,9 +1163,13 @@
     const halo = `stroke="#fff" stroke-opacity=".7" stroke-width="${sw * 2.2}" fill="none"`
     switch (s.type) {
       case 'pin': {
+        // A speech bubble, its tail on the spot that was clicked. (The data still calls it a pin.)
         const r = Math.max(8, base * 0.011)
-        const d = `M${x1},${y1} c${-r * 0.9},${-r * 1.3} ${-r * 1.6},${-r * 1.9} ${-r * 1.6},${-r * 2.7} a${r * 1.6},${r * 1.6} 0 1 1 ${r * 3.2},0 c0,${r * 0.8} ${-r * 0.7},${r * 1.4} ${-r * 1.6},${r * 2.7}z`
-        return `<path d="${d}" fill="${c}" stroke="#fff" stroke-width="${sw * 0.8}"/><circle cx="${x1}" cy="${y1 - r * 2.7}" r="${r * 0.6}" fill="#fff"/>`
+        const [L, T, R, B, k] = [x1, y1 - r * 3.2, x1 + r * 3.6, y1 - r * 0.9, r * 0.8]
+        const d = `M${x1},${y1} L${L + r * 1.4},${B} H${R - k} A${k},${k} 0 0 0 ${R},${B - k} V${T + k} A${k},${k} 0 0 0 ${R - k},${T} H${L + k} A${k},${k} 0 0 0 ${L},${T + k} Z`
+        const cy = (T + B) / 2
+        return `<path d="${d}" fill="${c}" stroke="#fff" stroke-width="${sw * 0.8}" stroke-linejoin="round"/>` +
+          [1, 1.8, 2.6].map((dx) => `<circle cx="${L + r * dx}" cy="${cy}" r="${r * 0.28}" fill="#fff"/>`).join('')
       }
       case 'circle':
         return `<ellipse cx="${bx + bw / 2}" cy="${by + bh / 2}" rx="${bw / 2}" ry="${bh / 2}" ${halo}/><ellipse cx="${bx + bw / 2}" cy="${by + bh / 2}" rx="${bw / 2}" ry="${bh / 2}" stroke="${c}" stroke-width="${sw}" fill="none"/>`
@@ -1027,41 +1194,6 @@
     return ''
   }
 
-  // --- The marks' notes, and the reminder to save ---
-  function renderMarks() {
-    const box = $('marks')
-    box.innerHTML = ''
-    marks.forEach((m, i) => {
-      const row = document.createElement('div')
-      row.className = 'markrow' + (i === picked ? ' on' : '')
-      row.innerHTML = `<span class="marknum" style="background:${esc(m.shape.color)}">${i + 1}</span><span class="markkind">${KIND_NAMES[m.shape.type] || 'Mark'}</span>` +
-        `<input type="text" maxlength="5000" data-note="${i}" placeholder="What about this ${(KIND_NAMES[m.shape.type] || 'mark').toLowerCase()}?">` +
-        `<button type="button" class="del" title="Delete this mark" aria-label="Delete mark ${i + 1}">🗑</button>`
-      const input = row.querySelector('input')
-      input.value = m.note
-      input.addEventListener('input', () => { m.note = input.value; renderUnsaved() })
-      input.addEventListener('focus', () => { if (picked !== i) { picked = i; renderTools(); renderOverlay(); box.querySelectorAll('.markrow').forEach((r, j) => r.classList.toggle('on', j === i)) } })
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); save() }
-        if (e.key === 'Escape') { e.preventDefault(); input.blur() }
-      })
-      row.querySelector('.del').onclick = () => deleteMark(i)
-      box.appendChild(row)
-    })
-    $('text').placeholder = marks.length ? 'Anything else? (optional)' : 'What should change?'
-  }
-
-  function renderUnsaved() {
-    const n = marks.length
-    const words = $('text').value.trim() !== '' || ($('suggestOn').checked && $('suggestion').value.trim() !== '')
-    $('unsaved').hidden = !(n || words)
-    $('unsavedText').textContent = n
-      ? `${n} mark${n === 1 ? '' : 's'} not saved yet. Write what each one is about below, then press Save.`
-      : 'Your comment isn\'t saved yet. Press Save when you\'re done.'
-  }
-  $('text').addEventListener('input', renderUnsaved)
-  $('suggestion').addEventListener('input', renderUnsaved)
-
   // --- Composer ---
   function renderComposerTarget() {
     $('targetLabel').textContent = targetName(currentTarget())
@@ -1071,84 +1203,62 @@
     const onStep = !wholeGuide && mode === 'steps' && entry() && entry().kind === 'step'
     $('suggestRow').hidden = !onStep
     if (!onStep) { $('suggestOn').checked = false; $('suggestion').hidden = true }
-    $('wholeGuide').textContent = wholeGuide ? (mode === 'video' ? 'Comment on this moment instead' : 'Comment on this step instead') : 'Comment on the whole guide instead'
+    $('wholeGuide').textContent = wholeGuide ? (mode === 'video' ? 'Comment on This Moment' : 'Comment on This Step') : 'Comment on the Whole Guide'
   }
   $('wholeGuide').addEventListener('click', () => {
-    if (!wholeGuide && marks.length && !confirm('Comments on the whole guide have no marks. Clear your marks?')) return
     wholeGuide = !wholeGuide
-    if (wholeGuide) { marks = []; undoStack = []; redoStack = []; picked = null; tool = 'select'; renderTools(); renderFrameMode(); renderOverlay(); renderMarks(); renderUnsaved() }
     renderComposer()
+    $('text').focus()
   })
   $('suggestOn').addEventListener('change', () => {
     $('suggestion').hidden = !$('suggestOn').checked
     if ($('suggestOn').checked) { $('suggestion').value = plain(entry().text); $('suggestion').focus() }
-    renderUnsaved()
   })
   $('text').addEventListener('focus', () => videoEl?.pause())
-  $('clearDraft').addEventListener('click', () => { if (!unsaved() || confirm('Clear your marks and comment?')) clearDraft() })
   function clearDraft() {
     $('text').value = ''
     $('suggestOn').checked = false
     $('suggestion').hidden = true
-    marks = []; undoStack = []; redoStack = []
-    picked = null
-    tool = 'select'
     wholeGuide = false
-    renderTools(); renderFrameMode(); renderOverlay(); renderComposer(); renderMarks(); renderUnsaved()
+    closePeek()
+    discardMarks()
+    renderComposer()
   }
 
   $('composer').addEventListener('submit', (ev) => { ev.preventDefault(); void save() })
-  $('saveTop').addEventListener('click', () => void save())
+  $('text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void save() } })
 
-  /**
-   * Saves what's been written: each mark with a note becomes its own comment (its own to-do), and the comment box
-   * (with any marks that have no note) one more. Saved one at a time, so a failure keeps what wasn't saved.
-   */
+  /** Posts the comment typed below the picture (on the step, the video moment or the whole guide; no marks). */
   async function save() {
-    if (!me) return askName()
+    if (!me) { afterName = save; return askName() }
     const text = $('text').value.trim()
     const suggesting = $('suggestOn').checked && !$('suggestRow').hidden
     const suggestion = suggesting ? $('suggestion').value.trim() : ''
-    const loose = marks.filter((m) => !m.note.trim())
-    if (!marks.length && !text && !suggestion) {
-      $('postState').textContent = 'Draw a mark or type a comment first.'
+    if (!text && !suggestion) {
+      $('postState').textContent = 'Type a comment first.'
       $('text').focus()
       return
     }
-    if (loose.length && !text && !suggestion) {
-      const n = marks.indexOf(loose[0]) + 1
-      $('postState').textContent = `Say what mark ${n} is about, so they know what to change.`
-      $('marks').querySelector(`[data-note="${n - 1}"]`)?.focus()
-      return
-    }
-    const target = currentTarget()
-    const out = marks.filter((m) => m.note.trim()).map((m) => ({ mark: m, comment: { id: newId(), parentId: null, author: me, kind: 'comment', text: m.note.trim(), target, shapes: [m.shape] } }))
-    if (text || suggestion || loose.length) {
-      const c = { id: newId(), parentId: null, author: me, kind: suggestion ? 'suggestion' : 'comment', text, target, shapes: wholeGuide ? [] : loose.map((m) => m.shape) }
-      if (suggestion) c.suggestion = suggestion
-      out.push({ mark: null, loose: true, comment: c })
-    }
-    $('post').disabled = $('saveTop').disabled = true
-    $('postState').textContent = 'Saving…'
-    let saved = 0
+    const c = { id: newId(), parentId: null, author: me, kind: suggestion ? 'suggestion' : 'comment', text, target: currentTarget(), shapes: [] }
+    if (suggestion) c.suggestion = suggestion
+    $('post').disabled = true
+    $('postState').textContent = 'Posting…'
     try {
-      for (const item of out) {
-        await post(item.comment)
-        saved++
-        if (item.mark) marks = marks.filter((m) => m !== item.mark)
-        else { marks = marks.filter((m) => m.note.trim()); $('text').value = ''; $('suggestOn').checked = false; $('suggestion').hidden = true }
-        selectedComment = item.comment.id
-      }
-      $('postState').textContent = `✓ Saved`
-      setTimeout(() => { if ($('postState').textContent === '✓ Saved') $('postState').textContent = '' }, 2500)
-      clearDraft()
+      await post(c)
+      selectedComment = c.id
+      $('text').value = ''
+      $('suggestOn').checked = false
+      $('suggestion').hidden = true
+      wholeGuide = false
+      renderComposer()
       tab = 'comments'
+      $('postState').textContent = '✓ Posted'
+      setTimeout(() => { if ($('postState').textContent === '✓ Posted') $('postState').textContent = '' }, 2500)
     } catch (err) {
-      $('postState').textContent = `${saved ? `${saved} saved, but the rest weren't` : 'Not saved'}: ${err.message} Press Save to try again.`
-      picked = null
-      renderTools(); renderMarks(); renderUnsaved()
+      $('postState').textContent = `Not posted: ${err.message} Try again.`
     } finally {
-      $('post').disabled = $('saveTop').disabled = false
+      $('post').disabled = false
+      renderList()
       void reload()
     }
   }
@@ -1208,7 +1318,7 @@
       return
     }
     if (top.length === 0) {
-      list.innerHTML = '<p class="hint" style="padding: 8px">No comments yet. Mark up a step or the video and save the first one.</p>'
+      list.innerHTML = '<p class="hint" style="padding: 8px">No comments yet. Click anywhere on the picture to leave the first one.</p>'
       return
     }
     for (const c of [...top].sort((a, b) => order(a) - order(b) || String(a.createdAt).localeCompare(String(b.createdAt)))) {
@@ -1315,7 +1425,7 @@
   // --- Send Back ---
   $('sendBack').onclick = () => {
     const mineCount = comments.filter((c) => mine.has(c.id) && c.kind !== 'done').length
-    $('sendText').textContent = (unsaved() ? 'You have marks or a comment that aren\'t saved yet: press Not Yet, then Save. ' : '') + (mineCount
+    $('sendText').textContent = (unsaved() ? 'You have a comment that isn\'t posted yet: press Not Yet, then Post. ' : '') + (mineCount
       ? `${content.from} will see your ${mineCount} comment${mineCount === 1 ? '' : 's'} as a to-do list. You can still add more afterwards.`
       : `You haven't saved any comments. Send it back anyway to tell ${content.from} it all looks good?`)
     $('sendDialog').showModal()
