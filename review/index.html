@@ -37,7 +37,7 @@
   .primary:hover { background: var(--accent); filter: brightness(1.15); }
   .link { border: 0; background: none; padding: 0; color: var(--muted); text-decoration: underline; }
   .link:hover { background: none; color: var(--text); }
-  textarea, input[type=text] { width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  textarea, input[type=text], input[type=email] { width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
   textarea { resize: vertical; min-height: 64px; }
   textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   [hidden] { display: none !important; }
@@ -135,6 +135,8 @@
   .suggest b { display: block; font-size: 12px; color: var(--good); }
   .replies { margin: 6px 0 0 12px; padding-left: 10px; border-left: 2px solid var(--line); }
   .replies .comment { background: none; padding: 4px 0; margin: 0; }
+  .replies .comment.owner { background: var(--soft); border-radius: 6px; padding: 6px 8px; margin: 4px 0; }
+  .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 600; vertical-align: 1px; }
   .replybox { margin-top: 6px; display: grid; gap: 6px; }
 
   .banner { padding: 10px 14px; border-radius: 8px; margin: 0 20px; background: var(--accent-soft); }
@@ -234,7 +236,9 @@
   <form method="dialog" id="nameForm">
     <h2>Who's reviewing?</h2>
     <p class="hint">Your name is shown with your comments. No account needed.</p>
-    <p><input type="text" id="nameInput" maxlength="80" autocomplete="name" placeholder="Your name" required></p>
+    <p><input type="text" id="nameInput" maxlength="80" autocomplete="name" placeholder="Your name" required aria-label="Your name"></p>
+    <p><input type="email" id="emailInput" maxlength="254" autocomplete="email" placeholder="Your email (optional)" aria-label="Your email (optional)"></p>
+    <p class="hint" id="emailWhy">So they can tell you when your changes are done, or ask you a question. Only they see it.</p>
     <div class="row"><button type="submit" class="primary">Start Reviewing</button></div>
   </form>
 </dialog>
@@ -318,6 +322,7 @@
   let content = null
   let comments = []
   let me = store.get('review-name') || ''
+  let myEmail = store.get('review-email') || ''
   let mode = 'steps'          // 'steps' or 'video'
   let tab = 'steps'           // the side list: 'steps' or 'comments'
   let index = 0               // the step shown
@@ -379,15 +384,27 @@
 
   function askName() {
     $('nameInput').value = me
+    $('emailInput').value = myEmail
+    if (content) $('emailWhy').textContent = `So ${content.from} can tell you when your changes are done, or ask you a question. Only ${content.from} sees it.`
     $('nameDialog').showModal()
   }
-  $('nameForm').addEventListener('submit', () => {
+  $('nameForm').addEventListener('submit', (e) => {
     const name = $('nameInput').value.trim().slice(0, 80)
     if (!name) return
+    const email = $('emailInput').value.trim().toLowerCase()
+    if (email && !/^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]{2,}$/.test(email)) {
+      e.preventDefault()
+      $('emailInput').setCustomValidity("That email address doesn't look right. Fix it, or leave it empty.")
+      $('emailInput').reportValidity()
+      return
+    }
+    myEmail = email
+    store.set('review-email', myEmail)
     me = name
     store.set('review-name', me)
     $('myName').textContent = me
   })
+  $('emailInput').addEventListener('input', () => $('emailInput').setCustomValidity(''))
   $('nameDialog').addEventListener('cancel', (e) => { if (!me) e.preventDefault() })
   $('changeName').addEventListener('click', askName)
 
@@ -1132,7 +1149,7 @@
   }
 
   async function post(comment) {
-    const saved = await rpc('add_review_comment', { review: reviewId, secret, comment: { ...comment, editKey } })
+    const saved = await rpc('add_review_comment', { review: reviewId, secret, comment: { ...comment, editKey, ...(myEmail ? { authorEmail: myEmail } : {}) } })
     remember(comment.id)
     comments.push({ ...comment, createdAt: (saved && saved.createdAt) || new Date().toISOString() })
   }
@@ -1205,7 +1222,7 @@
       `<span class="where" title="Show it">${esc(shortName(c.target))}${c.shapes && c.shapes.length ? ' ✎' : ''}</span></div>` +
       (c.text ? `<p>${esc(c.text)}</p>` : '') +
       (c.suggestion ? `<div class="suggest"><b>Suggested wording</b>${esc(c.suggestion)}</div>` : '') +
-      (replies.length ? `<div class="replies">${replies.map((r) => `<div class="comment"><div class="meta"><span class="who">${esc(r.author)}</span><span>${esc(when(r.createdAt))}</span>${deletable(r)}</div><p>${esc(r.text)}</p></div>`).join('')}</div>` : '') +
+      (replies.length ? `<div class="replies">${replies.map((r) => `<div class="comment${r.fromOwner ? ' owner' : ''}"><div class="meta"><span class="who">${esc(r.author)}${r.fromOwner ? ' <span class="badge">Guide author</span>' : ''}</span><span>${esc(when(r.createdAt))}</span>${deletable(r)}</div><p>${esc(r.text)}</p></div>`).join('')}</div>` : '') +
       `<button class="link reply" type="button">Reply</button>${deletable(c)}`
     div.querySelector('.where').onclick = () => goTo(c)
     div.querySelector('.reply').onclick = (ev) => { ev.stopPropagation(); replyingTo = c.id; renderList() }
@@ -1306,7 +1323,7 @@
     button.disabled = true
     try {
       const id = newId()
-      await rpc('add_review_comment', { review: reviewId, secret, comment: { id, parentId: null, author: me, kind: 'done', text: '', target: { kind: 'guide' }, shapes: [], editKey } })
+      await rpc('add_review_comment', { review: reviewId, secret, comment: { id, parentId: null, author: me, kind: 'done', text: '', target: { kind: 'guide' }, shapes: [], editKey, ...(myEmail ? { authorEmail: myEmail } : {}) } })
       remember(id)
       $('sendDialog').close()
       $('sentText').textContent = `${content.from} has your review and will see your comments as a to-do list. Thank you! You can keep adding comments if you think of more.`
