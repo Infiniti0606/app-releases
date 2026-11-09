@@ -64,6 +64,16 @@
   .tools .sep { width: 1px; height: 24px; background: var(--line); margin: 0 6px; }
   .swatch { width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
   .swatch.on { box-shadow: 0 0 0 2px var(--accent); }
+  .rainbow, .rainbow:hover { width: 30px; height: 26px; padding: 0; border-radius: 7px; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line);
+    background: conic-gradient(#d93a3a, #f08c00, #f2c94c, #2f9e44, #1098ad, #1971c2, #7048e8, #d6336c, #d93a3a); }
+  .rainbow.on { box-shadow: 0 0 0 2px var(--accent); }
+  .toolwrap { position: relative; }
+  .palette { position: absolute; z-index: 5; display: grid; gap: 10px; padding: 12px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.25); }
+  .palette .grid { display: grid; grid-template-columns: repeat(5, 28px); gap: 10px; }
+  .palette .swatch { width: 28px; height: 28px; }
+  .palette .custom { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; cursor: pointer; }
+  .palette .custom input { width: 40px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
   .hint { color: var(--muted); font-size: 13px; margin: 0; }
 
   .framewrap { position: relative; }
@@ -113,6 +123,15 @@
   .peek .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
   .peek .meta b { color: var(--text); }
   .peek .x { margin-left: auto; border: 0; padding: 2px 8px; }
+  .peek { max-height: min(420px, 70vh); overflow: auto; }
+  .peek .thread { display: grid; gap: 8px; }
+  .peek .reply-item { padding-left: 10px; border-left: 3px solid var(--line); }
+  .peek .reply-item.owner { border-left-color: var(--accent); }
+  .peek textarea { min-height: 40px; }
+  .peek .nav { display: flex; align-items: center; gap: 2px; margin-left: auto; white-space: nowrap; flex: none; }
+  .peek .meta .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .peek .nav button { border: 0; padding: 2px 8px; }
+  .cnum { flex: none; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; }
   .picture svg .saved { pointer-events: visiblePainted; cursor: pointer; }
   .picture svg .catch { pointer-events: all; }
   /* On the video, drawing only covers the picture, so the video's own controls along the bottom keep working. */
@@ -190,7 +209,7 @@
         </div>
         <p class="hint" id="howTo">Click anywhere on the picture to leave a comment.</p>
       </div>
-      <div class="tools" id="tools" role="toolbar" aria-label="Markup tools"></div>
+      <div class="toolwrap"><div class="tools" id="tools" role="toolbar" aria-label="Markup tools"></div><div class="palette" id="palette" hidden></div></div>
       <div class="framewrap" id="framewrap">
         <div class="frame" id="frame"></div>
         <div class="zoombar" id="zoombar" role="group" aria-label="Zoom">
@@ -269,15 +288,16 @@
   'use strict'
   const CONFIG = {"api":"https://uxpenshsinrybnbgqquu.supabase.co","key":"sb_publishable_m7oJ_FeAs3XAuTN43gMd3w_FCDL9MWa"}
   const BUCKET = 'review-files'
-  const COLORS = ['#e03131', '#f08c00', '#fab005', '#2f9e44', '#1971c2', '#7048e8']
+  // The same 15 ready-made colours as the app.
+  const COLORS = ['#d93a3a', '#f08c00', '#f2c94c', '#82c91e', '#2f9e44', '#0ca678', '#1098ad', '#1971c2', '#4263eb', '#7048e8', '#d6336c', '#8d5524', '#868e96', '#111111', '#ffffff']
   const TOOLS = [
-    { id: 'pin', icon: '💬', name: 'Comment: click anywhere and type' },
-    { id: 'select', icon: '👆', name: 'Move: drag your marks, or drag to look around when zoomed in' },
-    { id: 'box', icon: '▭', name: 'Box: drag around something' },
-    { id: 'circle', icon: '◯', name: 'Circle: drag around something' },
-    { id: 'arrow', icon: '➜', name: 'Arrow: drag from tail to tip' },
-    { id: 'pen', icon: '✏️', name: 'Pen: draw freely' },
-    { id: 'highlight', icon: '', name: 'Highlighter: drag over words to mark them, like a marker pen' }
+    { id: 'pin', key: 'c', icon: '💬', name: 'Comment (C): click anywhere and type, or drag to comment on an area' },
+    { id: 'select', key: 'v', icon: '👆', name: 'Move (V): drag your marks, or drag to look around when zoomed in' },
+    { id: 'box', key: 'b', icon: '▭', name: 'Box (B): drag around something' },
+    { id: 'circle', key: 'o', icon: '◯', name: 'Circle (O): drag around something' },
+    { id: 'arrow', key: 'a', icon: '➜', name: 'Arrow (A): drag from tail to tip' },
+    { id: 'pen', key: 'p', icon: '✏️', name: 'Pen (P): draw freely' },
+    { id: 'highlight', key: 'h', icon: '', name: 'Highlighter (H): drag over words to mark them, like a marker pen' }
   ]
   /** Drawn freehand (a list of points) rather than between two corners. Old highlights were boxes, with no points. */
   const freehand = (s) => s.type === 'pen' || (s.type === 'highlight' && Array.isArray(s.points))
@@ -340,6 +360,7 @@
   let undoStack = []          // earlier versions of `marks` (as JSON), for Undo; cleared when the marks are saved or left
   let redoStack = []
   let wholeGuide = false      // the comment is on the whole guide
+  let showComments = true     // everyone's comments drawn on the picture (Shift+C hides them for a clean look)
   let selectedComment = null  // a comment picked in the list: its drawing is shown
   let replyingTo = null
   let videoEl = null
@@ -388,7 +409,12 @@
   async function reload() {
     try {
       const data = await rpc('open_review', { review: reviewId, secret })
-      if (data) comments = data.comments || []
+      if (data) {
+        const count = (list) => list.filter((r) => r.parentId === peekId).length
+        const moreReplies = peekId && count(data.comments || []) !== count(comments)
+        comments = data.comments || []
+        if (moreReplies) openPeek(peekId)
+      }
     } catch { /* keep what we have */ }
     renderList()
     renderOverlay()
@@ -459,20 +485,24 @@
       box.appendChild(b)
     }
     box.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }))
-    for (const c of COLORS) {
-      const b = document.createElement('button')
-      b.type = 'button'
-      b.className = 'swatch' + (c === color ? ' on' : '')
-      b.style.background = c
-      b.title = picked !== null ? 'Colour (changes the picked mark too)' : 'Colour'
-      b.setAttribute('aria-label', `Colour ${c}`)
-      b.onclick = () => {
-        color = c
-        if (picked !== null && marks[picked].shape.color !== c) { rememberMarks(); marks[picked].shape.color = c }
-        renderTools(); renderOverlay()
-      }
-      box.appendChild(b)
-    }
+    // The colour now, and a rainbow box: both open the colours.
+    const now = document.createElement('button')
+    now.type = 'button'
+    now.className = 'swatch on'
+    now.style.background = color
+    now.title = picked !== null ? 'Colour (changes the picked mark too)' : 'Colour'
+    now.setAttribute('aria-label', `Colour now: ${color}. Click to change it.`)
+    now.onclick = togglePalette
+    box.appendChild(now)
+    const more = document.createElement('button')
+    more.type = 'button'
+    more.className = 'rainbow' + ($('palette').hidden ? '' : ' on')
+    more.id = 'rainbow'
+    more.title = 'More colours'
+    more.setAttribute('aria-label', 'More colours')
+    more.setAttribute('aria-expanded', String(!$('palette').hidden))
+    more.onclick = togglePalette
+    box.appendChild(more)
     box.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }))
     for (const [label, title, off, act] of [
       ['↶', 'Undo (Ctrl+Z)', undoStack.length === 0, undo],
@@ -497,7 +527,40 @@
     del.disabled = picked === null
     del.onclick = () => deleteMark(picked)
     box.appendChild(del)
+    box.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }))
+    const eye = document.createElement('button')
+    eye.type = 'button'
+    eye.className = 'tool' + (showComments ? '' : ' on')
+    eye.textContent = showComments ? '👁' : '🙈'
+    eye.title = showComments ? 'Hide comments on the picture (Shift+C)' : 'Show comments on the picture (Shift+C)'
+    eye.setAttribute('aria-label', eye.title)
+    eye.onclick = toggleComments
+    box.appendChild(eye)
   }
+
+  // --- The colours: 15 ready-made ones, and Custom for any other ---
+  function setColor(c) {
+    color = c
+    if (picked !== null && marks[picked] && marks[picked].shape.color !== c) { rememberMarks(); marks[picked].shape.color = c }
+    $('palette').hidden = true
+    renderTools(); renderOverlay()
+  }
+  function togglePalette() {
+    const pal = $('palette')
+    if (!pal.hidden) { pal.hidden = true; renderTools(); return }
+    pal.innerHTML = '<div class="grid">' + COLORS.map((c) => `<button type="button" class="swatch${c === color ? ' on' : ''}" style="background:${c}" data-c="${c}" title="${c}" aria-label="Colour ${c}"></button>`).join('') + '</div>' +
+      `<label class="custom">🎨 Custom Colour<input type="color" value="${/^#[0-9a-f]{6}$/i.test(color) ? color : '#d93a3a'}"></label>`
+    pal.querySelectorAll('[data-c]').forEach((b) => { b.onclick = () => setColor(b.dataset.c) })
+    pal.querySelector('input').addEventListener('change', (e) => setColor(e.target.value.toLowerCase()))
+    pal.hidden = false
+    renderTools()
+    const r = $('rainbow')
+    pal.style.left = `${Math.max(0, Math.min(r.offsetLeft - 8, $('tools').clientWidth - pal.offsetWidth))}px`
+    pal.style.top = `${r.offsetTop + r.offsetHeight + 6}px`
+  }
+  document.addEventListener('pointerdown', (e) => {
+    if (!$('palette').hidden && !e.target.closest('#palette, #rainbow, #tools .swatch')) { $('palette').hidden = true; renderTools() }
+  })
 
   // --- The picture or video in the middle ---
   let picture = null
@@ -751,7 +814,7 @@
     $('howTo').textContent = tool === 'select'
       ? 'Drag your marks to move them. Press 💬 to comment again.'
       : tool === 'pin'
-        ? (mode === 'video' ? 'Click on the video to pause it and leave a comment right there.' : 'Click anywhere on the picture to leave a comment.')
+        ? (mode === 'video' ? 'Click on the video to pause it and comment right there. Drag to comment on an area.' : 'Click anywhere on the picture to comment, or drag to comment on an area.')
         : 'Draw around what needs changing, then type your comment.'
     positionBubble()
   }
@@ -850,7 +913,8 @@
       if (!live) return
       const p = at(ev)
       live.x2 = p.x; live.y2 = p.y
-      if (live.type === 'pin') { live.x1 = p.x; live.y1 = p.y }
+      // Dragging with the Comment tool comments on an area: the bubble becomes a box.
+      if (live.type === 'pin' && (Math.abs(live.x2 - live.x1) > 0.015 || Math.abs(live.y2 - live.y1) > 0.015)) live.type = 'box'
       if (live.points && live.points.length < 2000) live.points.push(p.x, p.y)
       renderOverlay(live)
     })
@@ -1012,24 +1076,62 @@
     setTimeout(() => { if ($('howTo').textContent === text) renderFrameMode() }, 2500)
   }
 
-  // --- Someone's comment, opened from the picture ---
+  // --- Someone's comment, opened from the picture: read it, reply right there, or step to the next ---
   let peekId = null
+  /** The comments drawn on a picture, in number order (what ‹ › steps through). */
+  function drawnComments() {
+    const nums = numbers()
+    return comments.filter((c) => !c.parentId && c.kind !== 'done' && c.shapes && c.shapes.length && c.target.kind !== 'guide').sort((a, b) => nums.get(a.id) - nums.get(b.id))
+  }
   function openPeek(id) {
     const c = comments.find((x) => x.id === id)
     if (!c) return
+    const draft = peekId === id ? $('peek').querySelector('textarea')?.value || '' : ''
     peekId = id
     selectedComment = id
-    const replies = comments.filter((r) => r.parentId === id && r.kind !== 'done').length
+    const n = numbers().get(id)
+    const all = drawnComments()
+    const at = all.findIndex((x) => x.id === id)
+    const replies = comments.filter((r) => r.parentId === id && r.kind !== 'done')
     const el = $('peek')
-    el.innerHTML = `<div class="meta"><b>${esc(c.author)}</b><span>${esc(when(c.createdAt))}</span><button type="button" class="x" aria-label="Close">✕</button></div>` +
+    el.innerHTML =
+      `<div class="meta"><span class="cnum" style="background:${esc(colorOf(c))};color:${ink(colorOf(c))}">${n || ''}</span><b class="name">${esc(c.author)}</b>` +
+      `<span class="nav">${all.length > 1 ? `<button type="button" class="prev" aria-label="Previous comment" title="Previous comment">‹</button><span>${at + 1}/${all.length}</span><button type="button" class="next" aria-label="Next comment" title="Next comment">›</button>` : ''}` +
+      `<button type="button" class="x" aria-label="Close" title="Close (Esc)">✕</button></span></div>` +
+      `<div class="thread"><span class="hint" style="font-size:12px;margin-top:-6px">${esc(when(c.createdAt))}</span>` +
       (c.text ? `<p>${esc(c.text)}</p>` : '') +
       (c.suggestion ? `<div class="suggest"><b>Suggested wording</b>${esc(c.suggestion)}</div>` : '') +
-      `<div class="row" style="justify-content:flex-end"><button type="button" class="reply">↩ Reply${replies ? ` (${replies})` : ''}</button></div>`
-    el.querySelector('.x').onclick = closePeek
-    el.querySelector('.reply').onclick = () => {
-      closePeek()
-      tab = 'comments'; replyingTo = id; renderList()
-      $('list').querySelector('.comment.on')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      replies.map((r) => `<div class="reply-item${r.fromOwner ? ' owner' : ''}"><div class="meta"><b>${esc(r.author)}</b>${r.fromOwner ? '<span class="badge">Guide author</span>' : ''}<span>${esc(when(r.createdAt))}</span></div><p>${esc(r.text)}</p></div>`).join('') +
+      `</div>` +
+      `<form class="peekreply"><textarea maxlength="5000" placeholder="Reply…" aria-label="Your reply"></textarea>` +
+      `<div class="row" style="justify-content:flex-end"><span class="hint state" style="flex:1;font-size:12px"></span><button class="primary" type="submit">Reply</button></div></form>`
+    el.querySelector('.x').onclick = () => { closePeek(); renderOverlay() }
+    const step = (d) => { const next = all[(at + d + all.length) % all.length]; if (next) goTo(next) }
+    el.querySelector('.prev')?.addEventListener('click', () => step(-1))
+    el.querySelector('.next')?.addEventListener('click', () => step(1))
+    const form = el.querySelector('form'), box = form.querySelector('textarea')
+    box.value = draft
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !touchy) { e.preventDefault(); form.requestSubmit() }
+      if (e.key === 'Escape') { e.preventDefault(); closePeek(); renderOverlay() }
+    })
+    form.onsubmit = async (e) => {
+      e.preventDefault()
+      const text = box.value.trim()
+      if (!text) return box.focus()
+      if (!me) { afterName = () => form.requestSubmit(); return askName() }
+      form.querySelector('button').disabled = true
+      form.querySelector('.state').textContent = 'Sending…'
+      try {
+        await post({ id: newId(), parentId: id, author: me, kind: 'comment', text, target: c.target, shapes: [] })
+        box.value = ''
+        openPeek(id)
+        $('peek').querySelector('textarea').focus({ preventScroll: true })
+        void reload()
+      } catch (err) {
+        form.querySelector('button').disabled = false
+        form.querySelector('.state').textContent = `Not sent: ${err.message}`
+      }
     }
     el.hidden = false
     positionPeek()
@@ -1072,13 +1174,33 @@
     if (!typing && e.key === 'Escape' && tool !== 'pin' && picked === null) { tool = 'pin'; renderTools(); renderFrameMode(); return }
     if (!typing && (e.key === 'Delete' || e.key === 'Backspace') && picked !== null) { e.preventDefault(); deleteMark(picked); return }
     if (!typing && e.key === 'Escape' && picked !== null) { pick(null); return }
+    if (!typing && !ctrl && !e.altKey && e.key.toLowerCase() === 'c' && e.shiftKey) { e.preventDefault(); toggleComments(); return }
+    const short = !typing && !ctrl && !e.altKey && !e.shiftKey && TOOLS.find((t) => t.key === e.key.toLowerCase())
+    if (short) { e.preventDefault(); tool = short.id; if (tool !== 'select' && tool !== 'pin') videoEl?.pause(); renderTools(); renderFrameMode(); return }
     if (typing || mode !== 'steps') return
     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { if (index > 0) showStep(index - 1) } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { if (index < entries().length - 1) showStep(index + 1) } else return
     e.preventDefault()
   })
 
+  /** Every comment's number (oldest is 1), the same on the picture and in the list. */
+  function numbers() {
+    const m = new Map()
+    comments.filter((c) => !c.parentId && c.kind !== 'done').sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).forEach((c, i) => m.set(c.id, i + 1))
+    return m
+  }
+  /** Dark writing on light colours (white, yellow), white writing on the rest. */
+  const ink = (hex) => { const v = parseInt(String(hex).slice(1), 16); return ((v >> 16) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000 > 170 ? '#111' : '#fff' }
+  const colorOf = (c) => (c.shapes && c.shapes[0] && /^#[0-9a-f]{6}$/i.test(c.shapes[0].color) ? c.shapes[0].color : COLORS[0])
+  function toggleComments() {
+    showComments = !showComments
+    if (!showComments) closePeek()
+    renderTools(); renderOverlay()
+    flash(showComments ? 'Comments shown.' : 'Comments hidden. Press 👁 to show them again.')
+  }
+
   /** The saved comments shown on the picture now: those on this step, or near this moment of the paused video. */
   function commentsHere() {
+    if (!showComments) return []
     return comments.filter((c) => {
       if (!c.shapes || !c.shapes.length || c.parentId) return false
       if (mode === 'steps') return c.target.kind === 'step' && entry() && c.target.entryId === entry().id
@@ -1100,9 +1222,13 @@
     }
     const here = commentsHere()
     const anyPicked = here.some((c) => c.id === selectedComment)
+    const nums = numbers()
     for (const c of here) {
       const faint = (anyPicked && selectedComment !== c.id) || marks.length > 0
-      out += `<g class="${faint ? '' : 'saved'}" data-comment="${esc(c.id)}" opacity="${faint ? 0.35 : 0.9}"><title>${esc(c.author)}: ${esc(c.text)}</title>` + c.shapes.map((s) => shapeSvg(s, w, h, base)).join('') + '</g>'
+      const n = nums.get(c.id)
+      // The number goes in a speech bubble; a comment drawn only as boxes, arrows and so on gets a small numbered dot too.
+      const badge = c.shapes.some((s) => s.type === 'pin') ? '' : badgeSvg(c.shapes[0], n, w, h, base)
+      out += `<g class="${faint ? '' : 'saved'}" data-comment="${esc(c.id)}" opacity="${faint ? 0.35 : 1}"><title>${esc(c.author)}: ${esc(c.text)}</title>` + c.shapes.map((s) => shapeSvg(s, w, h, base, n)).join('') + badge + '</g>'
     }
     marks.forEach((m, i) => {
       out += `<g class="mark" data-mark="${i}">${hitSvg(m.shape, w, h, base)}${shapeSvg(m.shape, w, h, base)}</g>`
@@ -1149,13 +1275,24 @@
       `<rect x="${b.x - pad}" y="${b.y - pad}" width="${b.w + pad * 2}" height="${b.h + pad * 2}" fill="none" stroke="#1971c2" stroke-width="${sw * 1.5}" stroke-dasharray="${sw * 6} ${sw * 4}"/>`
   }
 
+  /** A numbered dot at a mark's top-left corner. */
+  function badgeSvg(s, n, w, h, base) {
+    if (!s || !n) return ''
+    const r = Math.max(9, base * 0.011)
+    const cx = (s.points ? Math.min(...s.points.filter((_, i) => i % 2 === 0)) : Math.min(s.x1, s.x2)) * w
+    const cy = (s.points ? Math.min(...s.points.filter((_, i) => i % 2 === 1)) : Math.min(s.y1, s.y2)) * h
+    const c = /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : COLORS[0]
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${c}" stroke="#fff" stroke-width="${r * 0.18}"/>` +
+      `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" fill="${ink(c)}" font-size="${r * (n > 99 ? 0.9 : 1.15)}" font-weight="700" font-family="Segoe UI, system-ui, sans-serif">${n}</text>`
+  }
+
   function penPoints(s, w, h) {
     const pts = []
     for (let i = 0; i + 1 < (s.points || []).length; i += 2) pts.push(`${s.points[i] * w},${s.points[i + 1] * h}`)
     return pts.join(' ')
   }
 
-  function shapeSvg(s, w, h, base) {
+  function shapeSvg(s, w, h, base, n) {
     const c = /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : COLORS[0]
     const sw = Math.max(2, base * 0.004)
     const x1 = s.x1 * w, y1 = s.y1 * h, x2 = s.x2 * w, y2 = s.y2 * h
@@ -1168,8 +1305,9 @@
         const [L, T, R, B, k] = [x1, y1 - r * 3.2, x1 + r * 3.6, y1 - r * 0.9, r * 0.8]
         const d = `M${x1},${y1} L${L + r * 1.4},${B} H${R - k} A${k},${k} 0 0 0 ${R},${B - k} V${T + k} A${k},${k} 0 0 0 ${R - k},${T} H${L + k} A${k},${k} 0 0 0 ${L},${T + k} Z`
         const cy = (T + B) / 2
-        return `<path d="${d}" fill="${c}" stroke="#fff" stroke-width="${sw * 0.8}" stroke-linejoin="round"/>` +
-          [1, 1.8, 2.6].map((dx) => `<circle cx="${L + r * dx}" cy="${cy}" r="${r * 0.28}" fill="#fff"/>`).join('')
+        return `<path d="${d}" fill="${c}" stroke="#fff" stroke-width="${sw * 0.8}" stroke-linejoin="round"/>` + (n
+          ? `<text x="${(L + R) / 2}" y="${cy}" text-anchor="middle" dominant-baseline="central" fill="${ink(c)}" font-size="${r * (n > 99 ? 1.2 : 1.6)}" font-weight="700" font-family="Segoe UI, system-ui, sans-serif">${n}</text>`
+          : [1, 1.8, 2.6].map((dx) => `<circle cx="${L + r * dx}" cy="${cy}" r="${r * 0.28}" fill="${ink(c)}"/>`).join(''))
       }
       case 'circle':
         return `<ellipse cx="${bx + bw / 2}" cy="${by + bh / 2}" rx="${bw / 2}" ry="${bh / 2}" ${halo}/><ellipse cx="${bx + bw / 2}" cy="${by + bh / 2}" rx="${bw / 2}" ry="${bh / 2}" stroke="${c}" stroke-width="${sw}" fill="none"/>`
@@ -1324,7 +1462,12 @@
     for (const c of [...top].sort((a, b) => order(a) - order(b) || String(a.createdAt).localeCompare(String(b.createdAt)))) {
       list.appendChild(commentEl(c))
     }
-    list.querySelector('.comment.on')?.scrollIntoView({ block: 'nearest' })
+    // Scrolls the list only (scrolling the page would pull a phone away from the picture).
+    const on = list.querySelector('.comment.on')
+    if (on) {
+      const r = on.getBoundingClientRect(), l = list.getBoundingClientRect()
+      if (r.top < l.top || r.bottom > l.bottom) list.scrollTop += r.top - l.top - 8
+    }
   }
 
   function commentEl(c) {
@@ -1333,7 +1476,7 @@
     const replies = comments.filter((r) => r.parentId === c.id && r.kind !== 'done')
     const deletable = (x) => mine.has(x.id) ? ` · <button class="link delete" type="button" data-id="${esc(x.id)}">Delete</button>` : ''
     div.innerHTML =
-      `<div class="meta"><span class="who">${esc(c.author)}</span><span>${esc(when(c.createdAt))}</span>` +
+      `<div class="meta"><span class="cnum" style="background:${esc(colorOf(c))};color:${ink(colorOf(c))}">${numbers().get(c.id) || ''}</span><span class="who">${esc(c.author)}</span><span>${esc(when(c.createdAt))}</span>` +
       `<span class="where" title="Show it">${esc(shortName(c.target))}${c.shapes && c.shapes.length ? ' ✎' : ''}</span></div>` +
       (c.text ? `<p>${esc(c.text)}</p>` : '') +
       (c.suggestion ? `<div class="suggest"><b>Suggested wording</b>${esc(c.suggestion)}</div>` : '') +
@@ -1374,9 +1517,10 @@
 
   /** Shows where a comment is, with its drawing picked out. */
   function goTo(c) {
-    if (unsaved() && !confirm('Leave your marks and comment without saving?')) return
+    if (unsaved() && !confirm('Leave your comment without posting it?')) return
     clearDraft()
     selectedComment = c.id
+    if (!showComments && c.shapes && c.shapes.length) { showComments = true; renderTools() }
     if (c.target.kind === 'step') {
       const i = entries().findIndex((e) => e.id === c.target.entryId)
       if (i >= 0) { mode = 'steps'; index = i; render() }
@@ -1389,6 +1533,8 @@
     renderList()
     renderOverlay()
     $('frame').scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    // Like Figma: the comment opens on the picture, ready to read and reply to.
+    if (c.shapes && c.shapes.length && c.target.kind !== 'guide') setTimeout(() => openPeek(c.id), 0)
   }
 
   function showStep(i) {
