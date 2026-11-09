@@ -356,6 +356,11 @@
     document.title = `Review: ${content.title}`
     $('title').textContent = content.title
     $('from').textContent = `Review requested by ${content.from}`
+    if (content.updatedAt && !Number.isNaN(Date.parse(content.updatedAt))) {
+      $('notice').hidden = false
+      $('notice').className = 'banner'
+      $('notice').textContent = `✎ ${content.from} updated this guide with changes on ${new Date(content.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}. Earlier comments are kept below.`
+    }
     mode = hasSteps() ? 'steps' : 'video'
     $('loading').hidden = true
     $('app').hidden = false
