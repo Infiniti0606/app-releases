@@ -353,7 +353,8 @@
   let mode = 'steps'          // 'steps' or 'video'
   let tab = 'steps'           // the side list: 'steps' or 'comments'
   let index = 0               // the step shown
-  let tool = 'pin'            // 'pin' is the Comment tool (a speech bubble)
+  // 'pin' is the Comment tool (a speech bubble). Phones start on Move, so a finger can pinch-zoom and look around first.
+  let tool = matchMedia('(pointer: coarse)').matches ? 'select' : 'pin'
   let color = COLORS[0]
   let marks = []              // the marks drawn for the comment being typed in the bubble: { shape }
   let picked = null           // the mark picked (its index), to move or delete
@@ -812,7 +813,7 @@
     }
     if (picture) picture.classList.toggle('drawing', tool !== 'select')
     $('howTo').textContent = tool === 'select'
-      ? 'Drag your marks to move them. Press 💬 to comment again.'
+      ? (matchMedia('(pointer: coarse)').matches ? 'Pinch to zoom in and drag to look around. Then tap 💬 and tap the spot to comment.' : 'Drag your marks to move them. Press 💬 to comment again.')
       : tool === 'pin'
         ? (mode === 'video' ? 'Click on the video to pause it and comment right there. Drag to comment on an area.' : 'Click anywhere on the picture to comment, or drag to comment on an area.')
         : 'Draw around what needs changing, then type your comment.'
