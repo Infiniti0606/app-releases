@@ -18,6 +18,7 @@
     --bg: #f5f5f4; --panel: #ffffff; --text: #1c1c1c; --muted: #66625e; --line: #e2e0dd; --soft: #efeeec;
     --accent: #262626; --on-accent: #ffffff; --accent-soft: #e8e8e8; --note: #fff8e1; --note-line: #f2c94c;
     --red: #d93a3a; --good: #2f7d3a; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+    --ring: rgba(38,38,38,.22); --ring-strong: #ffffff;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -25,6 +26,7 @@
       --bg: #161616; --panel: #212121; --text: #ededed; --muted: #a3a09c; --line: #343434; --soft: #2a2a2a;
       --accent: #ededed; --on-accent: #0b0b0b; --accent-soft: #3a3a3a; --note: #3a3220; --note-line: #b8952f;
       --red: #ef6461; --good: #6cc47a; --shadow: 0 1px 3px rgba(0,0,0,.4);
+      --ring: rgba(237,237,237,.28); --ring-strong: #ededed;
     }
   }
   * { box-sizing: border-box; }
@@ -178,11 +180,45 @@
   dialog .row { justify-content: flex-end; margin-top: 16px; }
   footer { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 24px; }
 
+  /* Send Back: the one thing every reviewer must find, so it's big, and it glows once there's something to send. */
+  #sendBack { padding: 9px 20px; font-size: 16px; border-radius: 999px; box-shadow: var(--shadow); }
+  #sendBack.nudge { animation: nudge 2.2s ease-in-out infinite; }
+  @keyframes nudge { 0%, 100% { box-shadow: 0 0 0 0 var(--ring) } 50% { box-shadow: 0 0 0 7px var(--ring) } }
+  @media (prefers-reduced-motion: reduce) { #sendBack.nudge, .floatsend { animation: none !important; } }
+  .helpbtn { width: 36px; height: 36px; padding: 0; border-radius: 50%; font-weight: 700; font-size: 16px; color: var(--muted); }
+  .helpbtn:hover { color: var(--text); }
+  /* The same button, floating at the bottom, when the one at the top has scrolled away. */
+  .floatsend { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20;
+    padding: 12px 26px; font-size: 16px; border-radius: 999px; box-shadow: 0 6px 22px rgba(0,0,0,.3); animation: rise .25s ease-out; }
+  body:has(#floatSend:not([hidden])) footer { padding-bottom: 96px; }
+  @keyframes rise { from { opacity: 0; transform: translate(-50%, 12px) } }
+
+  /* First-time walkthrough: a spotlight on each part, with a small card beside it. */
+  dialog.tour { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0;
+    background: transparent; box-shadow: none; border-radius: 0; overflow: hidden; }
+  dialog.tour::backdrop { background: transparent; }
+  .tour .spot { position: absolute; border-radius: 12px; box-shadow: 0 0 0 3px var(--ring-strong), 0 0 0 200vmax rgba(0,0,0,.55);
+    transition: all .3s ease; pointer-events: none; }
+  .tour .card { position: absolute; left: 50%; width: min(360px, calc(100% - 32px)); transform: translateX(-50%); padding: 22px 22px 16px;
+    background: var(--panel); color: var(--text); border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.35); text-align: center;
+    transition: top .3s ease; }
+  .tour .icon { width: 56px; height: 56px; margin: 0 auto 10px; border-radius: 50%; background: var(--accent-soft); font-size: 28px; line-height: 56px; }
+  .tour .icon.done { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+  .tour h2 { margin: 0 0 6px; font-size: 20px; }
+  .tour p { margin: 0; color: var(--muted); }
+  .tour .dots { display: flex; justify-content: center; gap: 6px; margin: 14px 0 12px; }
+  .tour .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+  .tour .dots i.on { background: var(--accent); width: 20px; border-radius: 4px; }
+  .tour .row { justify-content: space-between; margin: 0; }
+  .tour .primary { min-width: 110px; padding: 8px 18px; }
+
   @media (max-width: 900px) {
     .layout { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
     .side { position: static; max-height: none; }
     .picture { width: min(100%, calc(55vh * var(--ar))); }
-    header.top { padding: 12px 16px; }
+    header.top { padding: 12px 16px; gap: 10px 12px; }
+    header.top .me { flex: 1 1 100%; }
+    #sendBack { margin-left: auto; }
     .zoombar { right: 10px; bottom: 10px; }
     .zoombar button { min-width: 30px; height: 28px; padding: 0 6px; }
     .zoombar span { min-width: 40px; }
@@ -197,6 +233,7 @@
   <header class="top">
     <h1><span id="title"></span><span class="from" id="from"></span></h1>
     <span class="me">Reviewing as <b id="myName"></b> · <button class="link" id="changeName">Change</button></span>
+    <button class="helpbtn" id="tourOpen" title="How It Works" aria-label="How it works">?</button>
     <button class="primary" id="sendBack" title="Let them know you've finished: your comments are already saved">✓ Send Back</button>
   </header>
   <p class="banner" id="notice" hidden></p>
@@ -268,6 +305,19 @@
     <p class="hint" id="emailWhy">So they can tell you when your changes are done, or ask you a question. Only they see it.</p>
     <div class="row"><button type="submit" class="primary">Start Reviewing</button></div>
   </form>
+</dialog>
+
+<button class="primary floatsend" id="floatSend" hidden title="Let them know you've finished: your comments are already saved">✓ Send Back</button>
+
+<dialog id="tour" class="tour" aria-labelledby="tourTitle">
+  <div class="spot" id="tourSpot"></div>
+  <div class="card" id="tourCard">
+    <div class="icon" id="tourIcon" aria-hidden="true"></div>
+    <h2 id="tourTitle"></h2>
+    <p id="tourText"></p>
+    <div class="dots" id="tourDots" aria-hidden="true"></div>
+    <div class="row"><button type="button" class="link" id="tourSkip">Skip</button><button type="button" class="primary" id="tourNext">Next</button></div>
+  </div>
 </dialog>
 
 <dialog id="sentDialog" class="sent" aria-labelledby="sentTitle">
@@ -398,7 +448,7 @@
     renderTools()
     render()
     if (!me) askName()
-    else $('myName').textContent = me
+    else { $('myName').textContent = me; maybeTour() }
   }
 
   function problem(text) {
@@ -444,6 +494,7 @@
     store.set('review-name', me)
     $('myName').textContent = me
     if (afterName) { const then = afterName; afterName = null; setTimeout(then, 0) }
+    else maybeTour()
   })
   $('emailInput').addEventListener('input', () => $('emailInput').setCustomValidity(''))
   $('nameDialog').addEventListener('cancel', (e) => { if (!me) e.preventDefault() })
@@ -1061,7 +1112,7 @@
       selectedComment = comment.id
       discardMarks()
       tab = 'comments'
-      flash('✓ Comment posted')
+      flash(needsSending() && !comments.some((c) => mine.has(c.id) && c.kind === 'done') ? '✓ Comment posted. Press ✓ Send Back when you\'re done.' : '✓ Comment posted', 5000)
     } catch (err) {
       $('bubbleState').textContent = `Not posted: ${err.message} Try again.`
     } finally {
@@ -1072,9 +1123,9 @@
   }
 
   /** A short "done" note where the instructions are. */
-  function flash(text) {
+  function flash(text, ms = 2500) {
     $('howTo').textContent = text
-    setTimeout(() => { if ($('howTo').textContent === text) renderFrameMode() }, 2500)
+    setTimeout(() => { if ($('howTo').textContent === text) renderFrameMode() }, ms)
   }
 
   // --- Someone's comment, opened from the picture: read it, reply right there, or step to the next ---
@@ -1435,6 +1486,7 @@
   }
 
   function renderList() {
+    updateSendNudge()
     const top = comments.filter((c) => !c.parentId && c.kind !== 'done')
     $('tabSteps').hidden = !hasSteps()
     if (!hasSteps()) tab = 'comments'
@@ -1569,6 +1621,93 @@
     if (ms != null) videoEl.addEventListener('loadedmetadata', () => { videoEl.currentTime = ms / 1000 }, { once: true })
   }
 
+  // --- First-time walkthrough: three short steps, shown once per reviewer (this browser), skippable, reopened with ? ---
+  const TOUR_KEY = 'review-tour-seen'
+  const tourSteps = () => [
+    { target: 'tools', icon: '✏️', title: 'Mark It Up',
+      text: touchy
+        ? 'Pick a tool here (box, circle, arrow, pen or highlighter), then draw on the picture with your finger.'
+        : 'Pick a tool here (box, circle, arrow, pen or highlighter), then draw right on the picture.' },
+    { target: 'framewrap', icon: '💬', title: touchy ? 'Tap to Comment' : 'Click to Comment',
+      text: touchy
+        ? 'Tap 💬, then tap any spot on the picture and type what you\'d change. Pinch to zoom in first if you need to.'
+        : 'Click any spot on the picture and type what you\'d change. Each comment is saved as soon as you post it.' },
+    { target: 'sendBack', icon: '✓', done: true, title: 'Send Back When Done',
+      text: `When you've finished, press Send Back so ${content ? content.from : 'they'} knows your review is ready.` }
+  ]
+  let tourAt = -1
+  function startTour() {
+    if (!content) return
+    tourAt = 0
+    $('tour').showModal()
+    showTourStep()
+  }
+  function endTour() {
+    store.set(TOUR_KEY, '1')
+    tourAt = -1
+    if ($('tour').open) $('tour').close()
+  }
+  function showTourStep() {
+    const steps = tourSteps()
+    const step = steps[tourAt]
+    $('tourIcon').textContent = step.icon
+    $('tourIcon').className = 'icon' + (step.done ? ' done' : '')
+    $('tourTitle').textContent = step.title
+    $('tourText').textContent = step.text
+    $('tourDots').innerHTML = steps.map((_, i) => `<i class="${i === tourAt ? 'on' : ''}"></i>`).join('')
+    $('tourNext').textContent = tourAt === steps.length - 1 ? 'Got It' : 'Next'
+    $('tourSkip').hidden = tourAt === steps.length - 1
+    $('tourCard').querySelector('.row').style.justifyContent = tourAt === steps.length - 1 ? 'center' : ''
+    if (step.target === 'sendBack') scrollTo(0, 0)
+    else $(step.target).scrollIntoView({ block: step.target === 'framewrap' ? 'start' : 'nearest' })
+    placeTour()
+    $('tourNext').focus()
+  }
+  /** The spotlight goes round the part; the card sits below it, or above it, or over its bottom edge if neither fits. */
+  function placeTour() {
+    if (tourAt < 0) return
+    const r = $(tourSteps()[tourAt].target).getBoundingClientRect()
+    const pad = 6, vw = innerWidth, vh = innerHeight
+    const top = Math.max(4, r.top - pad), left = Math.max(4, r.left - pad)
+    const bottom = Math.min(vh - 4, r.bottom + pad), right = Math.min(vw - 4, r.right + pad)
+    Object.assign($('tourSpot').style, { top: `${top}px`, left: `${left}px`, width: `${right - left}px`, height: `${bottom - top}px` })
+    const h = $('tourCard').offsetHeight, gap = 14
+    let y
+    if (bottom + gap + h <= vh - 8) y = bottom + gap
+    else if (top - gap - h >= 8) y = top - gap - h
+    else y = Math.max(8, Math.min(vh - h - 8, bottom - h - 16))
+    $('tourCard').style.top = `${y}px`
+  }
+  $('tourNext').onclick = () => { if (tourAt >= tourSteps().length - 1) endTour(); else { tourAt++; showTourStep() } }
+  $('tourSkip').onclick = endTour
+  $('tour').addEventListener('cancel', (e) => { e.preventDefault(); endTour() })
+  $('tourOpen').onclick = startTour
+  addEventListener('resize', placeTour)
+  /** After the name is given (or on a return visit), the first time only. */
+  function maybeTour() { if (!store.get(TOUR_KEY)) setTimeout(startTour, 150) }
+
+  // --- Send Back nudge: once there's a comment of yours not yet sent back, the button glows, and floats at the bottom when scrolled away ---
+  let sendBackVisible = true
+  let typingNow = false
+  function needsSending() {
+    const myOwn = comments.filter((c) => mine.has(c.id))
+    const at = (c) => Date.parse(c.createdAt) || 0
+    const lastSent = Math.max(0, ...myOwn.filter((c) => c.kind === 'done').map(at))
+    return myOwn.some((c) => c.kind !== 'done' && at(c) > lastSent)
+  }
+  function updateSendNudge() {
+    const due = !!content && needsSending()
+    $('sendBack').classList.toggle('nudge', due)
+    $('floatSend').hidden = !(due && !sendBackVisible && !typingNow && tourAt < 0)
+  }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(([e]) => { sendBackVisible = e.isIntersecting; updateSendNudge() }).observe($('sendBack'))
+  }
+  // On phones the keyboard pushes fixed buttons up over the typing, so the floating one hides while typing.
+  document.addEventListener('focusin', (e) => { typingNow = !!(e.target.closest && e.target.closest('textarea, input')); updateSendNudge() })
+  document.addEventListener('focusout', () => { typingNow = false; setTimeout(updateSendNudge, 0) })
+  $('floatSend').onclick = () => $('sendBack').click()
+
   // --- Send Back ---
   $('sendBack').onclick = () => {
     const mineCount = comments.filter((c) => mine.has(c.id) && c.kind !== 'done').length
@@ -1593,6 +1732,7 @@
       $('notice').hidden = false
       $('notice').className = 'banner'
       $('notice').textContent = `✓ Sent back to ${content.from}.`
+      updateSendNudge()
     } catch (err) {
       $('sendText').textContent = `That didn't go through: ${err.message} Try again.`
     } finally {
