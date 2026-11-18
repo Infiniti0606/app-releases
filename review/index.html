@@ -98,15 +98,40 @@
   .picture svg .hitfill { pointer-events: all; }
   .empty { padding: 48px 16px; text-align: center; color: var(--muted); }
 
-  .blips { margin: 10px 4px 0; }
-  .blipline { position: relative; height: 26px; border-radius: 6px; background: var(--soft); cursor: pointer; }
+  .blips { margin: 10px 0 0; }
+  /* The video's one timeline: it sits right under the video and lines up with it, so every dot is exactly at its moment. */
+  .blipline { position: relative; height: 26px; border-radius: 6px; background: var(--soft); cursor: pointer; touch-action: none; }
+  .blipline.scrubbing { cursor: grabbing; }
+  /* The video's own seek bar is hidden (outside full screen) so there's only one bar to read, and the dots can't disagree with it. */
+  .picture video:not(:fullscreen)::-webkit-media-controls-timeline { display: none; }
   .blipline .played { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-soft); border-radius: 6px 0 0 6px; pointer-events: none; }
   .blipline .tick { position: absolute; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; background: var(--muted); opacity: .5; pointer-events: none; }
   .blipline .blip { position: absolute; top: 3px; width: 20px; height: 20px; margin-left: -10px; padding: 0; border: 2px solid var(--panel);
     border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
   .blipline .blip:hover, .blipline .blip.on { transform: scale(1.25); z-index: 1; }
-  .blipline .head { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--text); pointer-events: none; }
-  .blips .hint { margin-top: 4px; }
+  /* Several comments close together: one numbered dot that opens a list of them on hover (or tap), each clickable. */
+  .blipline .blipgroup { position: absolute; top: 3px; width: 20px; height: 20px; margin-left: -10px; }
+  .blipline .blipgroup .blip { position: static; margin: 0; }
+  .blipline .blipgroup:hover, .blipline .blipgroup.open { z-index: 3; }
+  .blipfan { display: none; position: absolute; bottom: 100%; padding-bottom: 8px; cursor: default; }
+  .blipgroup:hover .blipfan, .blipgroup.open .blipfan, .blipgroup:focus-within .blipfan { display: block; }
+  .blipfan .card { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.25); }
+  .blipfan .row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: 7px; background: none; text-align: left; font-size: 13px; }
+  .blipfan .row:hover, .blipfan .row:focus-visible, .blipfan .row.on { background: var(--soft); }
+  .blipfan .n { flex: none; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; font-size: 12px; font-weight: 700; line-height: 22px; text-align: center; }
+  .blipfan .t { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .blipfan .x { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .blipline .head { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text); pointer-events: none; }
+  .blipline .head::before { content: ''; position: absolute; top: -3px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--text); }
+  .blips .hint { margin: 0; flex: 1; }
+  .blipbar { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .blipbar .clock { flex: none; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .blipbar .numbers { flex: none; padding: 2px 10px; border-radius: 999px; font-size: 12px; }
+  .blipbar .numbers.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .blipline .blip.number { width: auto; min-width: 20px; padding: 0 4px; border-radius: 10px; margin-left: 0; transform: translateX(-50%); white-space: nowrap; }
+  .blipline .blip.number:hover, .blipline .blip.number.on { transform: translateX(-50%) scale(1.25); }
+  .blipline .blipgroup .blip.number { position: absolute; top: 0; left: 50%; }
   .stepbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 4px; }
   .caption { display: flex; gap: 10px; align-items: flex-start; font-size: 16px; margin: 8px 0 0; }
   .num { flex: none; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 13px; background: var(--red); color: #fff; font-size: 14px; font-weight: 700; line-height: 26px; text-align: center; }
@@ -156,15 +181,34 @@
   .comment.on { border-color: var(--accent); }
   .comment .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .comment .who { font-weight: 600; color: var(--text); }
+  #list .comment { cursor: pointer; }
+  #list .comment:hover { border-color: var(--line); }
+  #list .comment.on:hover { border-color: var(--accent); }
+  #list .comment .replies .comment, #list .comment .replies .comment:hover { border-color: transparent; }
   .comment .where { cursor: pointer; background: var(--accent-soft); border-radius: 10px; padding: 0 8px; }
   .comment p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .suggest { margin-top: 6px; padding: 6px 8px; border-left: 3px solid var(--good); background: var(--panel); border-radius: 4px; font-size: 14px; white-space: pre-wrap; }
   .suggest b { display: block; font-size: 12px; color: var(--good); }
   .replies { margin: 6px 0 0 12px; padding-left: 10px; border-left: 2px solid var(--line); }
+  .comment.muted { opacity: .55; }
+  .comment.muted:hover { opacity: .85; }
+  .hiddenbar { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 2px; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); color: var(--muted); font-size: 13px; }
   .replies .comment { background: none; padding: 4px 0; margin: 0; }
   .replies .comment.owner { background: var(--soft); border-radius: 6px; padding: 6px 8px; margin: 4px 0; }
   .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 600; vertical-align: 1px; }
   .replybox { margin-top: 6px; display: grid; gap: 6px; }
+  /* Thumbs up and down on a comment or reply. Yours is filled in; press it again to take it back. */
+  .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+  .thumbs { display: inline-flex; gap: 4px; vertical-align: middle; }
+  .thumb { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1; }
+  .thumb svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .thumb:hover { color: var(--text); background: var(--accent-soft); }
+  .thumb.on, .thumb.on:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .thumb:disabled { opacity: 1; border-color: transparent; }
+  .thumb:disabled:hover { background: transparent; color: var(--muted); }
+  .replies .thumbs { margin-left: auto; }
+  .reply-item .thumbs { margin-top: 4px; }
+  .replies .thumb, .reply-item .thumb { height: 22px; padding: 0 6px; }
 
   .banner { padding: 10px 14px; border-radius: 8px; margin: 0 20px; background: var(--accent-soft); }
   .banner.error { background: #fdeeee; color: #8a1c1c; }
@@ -263,7 +307,7 @@
       </div>
       <div class="blips" id="blips" hidden>
         <div class="blipline" id="blipline"></div>
-        <p class="hint" id="bliphint"></p>
+        <div class="blipbar"><span class="clock" id="blipclock"></span><p class="hint" id="bliphint"></p><button type="button" class="numbers" id="blipNumbers" aria-pressed="true" title="Show or hide each comment's number on the dots"># Numbers</button></div>
       </div>
       <div class="stepbar" id="stepbar">
         <button id="prev">‹ Previous</button><span id="stepOf" class="hint"></span><button id="next">Next ›</button>
@@ -394,6 +438,25 @@
   const mineKey = `review-mine-${reviewId}`
   let mine = new Set((store.get(mineKey) || '').split(',').filter(Boolean))
   const remember = (id) => { mine.add(id); store.set(mineKey, [...mine].join(',')) }
+  // Comments dealt with are hidden for everyone (Hide here, or the guide's author ticking it Done in the app), so the
+  // list doesn't get out of hand. Nothing is deleted: "Show" brings them back here, and anyone can Unhide one.
+  let showHidden = false
+  const isHidden = (c) => c.hidden === true
+  async function setHidden(c, hide) {
+    try {
+      await rpc('hide_review_comment', { review: reviewId, secret, comment_id: c.id, hide })
+    } catch (err) {
+      alert(`That comment couldn't be ${hide ? 'hidden' : 'shown again'}: ${err.message}`)
+      return
+    }
+    c.hidden = hide
+    if (hide && selectedComment === c.id && !showHidden) { selectedComment = null; closePeek() }
+    renderList(); renderOverlay(); if (videoEl) renderBlips()
+  }
+  // This browser's thumbs (comment id: 1 or -1), so they show filled in. The cloud knows them by the edit key.
+  const thumbsKey = `review-thumbs-${reviewId}`
+  let myThumbs = {}
+  try { myThumbs = JSON.parse(store.get(thumbsKey) || '{}') || {} } catch { myThumbs = {} }
 
   // --- State ---
   let content = null
@@ -812,6 +875,8 @@
    * Under the video: its whole length, with a numbered blip for every comment on a moment of it (click to see it)
    * and a faint tick where each step is. Clicking the line itself jumps there.
    */
+  let openFan = null // the bunch of comments whose list was opened by a click or tap (hovering opens it too)
+  document.addEventListener('pointerdown', (ev) => { if (openFan && !ev.target.closest('.blipgroup')) { openFan = null; renderBlips() } })
   function renderBlips() {
     const box = $('blips')
     box.hidden = mode !== 'video' || !videoEl
@@ -819,41 +884,109 @@
     const total = (videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration * 1000 : content.video.durationMs) || 1
     const pct = (ms) => `${Math.min(100, Math.max(0, (ms / total) * 100))}%`
     const line = $('blipline')
+    // Line the bar up with the video as it shows on screen (left and right edges), so a moment sits under the same place.
+    const fr = $('frame').getBoundingClientRect(), pr = picture.getBoundingClientRect(), br = box.getBoundingClientRect()
+    if (br.width > 0) {
+      const left = Math.max(pr.left, fr.left + 8), right = Math.min(pr.right, fr.right - 8)
+      line.style.marginLeft = `${Math.max(0, left - br.left)}px`
+      line.style.marginRight = `${Math.max(0, br.right - right)}px`
+    }
     const now = videoEl.currentTime * 1000
-    const top = comments.filter((c) => !c.parentId && c.kind !== 'done' && c.target.kind === 'video').sort((a, b) => a.target.ms - b.target.ms)
+    $('blipclock').textContent = `${clock(now)} / ${clock(total)}`
+    const top = comments.filter((c) => !c.parentId && c.kind !== 'done' && c.target.kind === 'video' && (showHidden || !isHidden(c) || c.id === selectedComment)).sort((a, b) => a.target.ms - b.target.ms)
+    const nums = numbers()
+    $('blipNumbers').className = 'numbers' + (blipNumbers ? ' on' : '')
+    $('blipNumbers').setAttribute('aria-pressed', String(blipNumbers))
     let html = `<div class="played" style="width:${pct(now)}"></div>`
     for (const e of entries()) if (e.videoMs != null) html += `<div class="tick" style="left:${pct(e.videoMs)}"></div>`
     // Comments close together share one dot (otherwise they'd sit on top of each other), labelled with how many.
+    // "Close" is closer than a dot's width on screen, so no two dots ever cover each other.
+    const near = Math.max(0.02, (blipNumbers ? 30 : 22) / (line.clientWidth || 600))
     const groups = []
     for (const c of top) {
       const last = groups[groups.length - 1]
-      if (last && (c.target.ms - last[0].target.ms) / total < 0.02) last.push(c)
+      if (last && (c.target.ms - last[0].target.ms) / total < near) last.push(c)
       else groups.push([c])
     }
+    if (openFan && !groups.some((g) => g.length > 1 && g[0].id === openFan)) openFan = null
     for (const g of groups) {
       const c = g[0]
-      const col = c.shapes && c.shapes[0] && /^#[0-9a-f]{6}$/i.test(c.shapes[0].color) ? c.shapes[0].color : '#e03131'
+      const col = colorOf(c)
       const on = g.some((x) => x.id === selectedComment)
-      const title = g.map((x) => `${clock(x.target.ms)} ${x.author}: ${x.text}`).join('\n')
-      html += `<button type="button" class="blip${on ? ' on' : ''}" data-id="${esc(c.id)}" style="left:${pct(c.target.ms)};background:${col}" title="${esc(title)}" aria-label="${esc(title)}">${g.length > 1 ? g.length : '💬'}</button>`
+      if (g.length === 1) {
+        const title = `${nums.get(c.id) ? `${nums.get(c.id)}. ` : ''}${clock(c.target.ms)} ${c.author}: ${c.text}`
+        const label = blipNumbers ? nums.get(c.id) || '💬' : '💬'
+        html += `<button type="button" class="blip${on ? ' on' : ''}${blipNumbers ? ' number' : ''}" data-id="${esc(c.id)}" style="left:${pct(c.target.ms)};background:${col};color:${ink(col)}" title="${esc(title)}" aria-label="${esc(title)}">${esc(label)}</button>`
+        continue
+      }
+      // A list that opens above the dot, so each comment in the bunch can be clicked on its own.
+      // Centred over the dot, but kept within the bar so it never runs off the screen.
+      const mid = (c.target.ms + g[g.length - 1].target.ms) / 2
+      const lineW = line.clientWidth || 600, fanW = Math.min(300, lineW), dotX = Math.min(1, mid / total) * lineW
+      const fanX = Math.max(0, Math.min(lineW - fanW, dotX - fanW / 2)) - (dotX - 10)
+      const rows = g.map((x) => {
+        const xc = colorOf(x)
+        return `<button type="button" class="row${x.id === selectedComment ? ' on' : ''}" data-id="${esc(x.id)}" aria-label="${esc(`Comment ${nums.get(x.id) || ''} at ${clock(x.target.ms)}, ${x.author}: ${x.text}`)}">`
+          + `<span class="n" style="background:${xc};color:${ink(xc)}">${nums.get(x.id) || '💬'}</span><span class="t">${clock(x.target.ms)}</span>`
+          + `<span class="x"><b>${esc(x.author)}:</b> ${esc(x.text)}</span></button>`
+      }).join('')
+      // With numbers on, the bunch shows its comments' numbers ("4, 5" or "4+"); otherwise how many there are.
+      const label = !blipNumbers ? g.length : g.length <= 2 ? g.map((x) => nums.get(x.id)).join(', ') : `${nums.get(c.id)}+`
+      // The bunch's dot sits in the middle of its comments (they're all within a dot's width of it).
+      html += `<div class="blipgroup${openFan === c.id ? ' open' : ''}" style="left:${pct(mid)}">`
+        + `<button type="button" class="blip${on ? ' on' : ''}${blipNumbers ? ' number' : ''}" data-fan="${esc(c.id)}" style="background:${col};color:${ink(col)}" aria-label="${g.length} comments close together: show them" aria-expanded="${openFan === c.id}">${esc(label)}</button>`
+        + `<div class="blipfan" style="left:${fanX}px;width:${fanW}px"><div class="card">${rows}</div></div></div>`
     }
     html += `<div class="head" style="left:${pct(now)}"></div>`
     line.innerHTML = html
     $('bliphint').textContent = top.length
-      ? `${top.length} comment${top.length === 1 ? '' : 's'} on the video: click a dot to see it (a number means several close together).${entries().some((e) => e.videoMs != null) ? ' Thin lines are where each step starts.' : ''}`
+      ? `${top.length} comment${top.length === 1 ? '' : 's'} on the video: click a dot to see it, or point at a bunch (${blipNumbers ? '"4, 5" or "4+"' : 'a number'}) to pick one. Drag the bar to move, or press ← → for one frame (Shift: 1 second).${entries().some((e) => e.videoMs != null) ? ' Thin lines are where each step starts.' : ''}`
       : 'Comments you post on the video show here as dots.'
   }
+  // The numbers on the dots under the video: on unless turned off (remembered in this browser).
+  let blipNumbers = store.get('review-blip-numbers') !== 'off'
+  $('blipNumbers').addEventListener('click', () => {
+    blipNumbers = !blipNumbers
+    store.set('review-blip-numbers', blipNumbers ? 'on' : 'off')
+    renderBlips()
+  })
   $('blipline').addEventListener('click', (ev) => {
     if (!videoEl) return
+    const fan = ev.target.closest('[data-fan]')
+    if (fan) { openFan = openFan === fan.dataset.fan ? null : fan.dataset.fan; renderBlips(); return }
+    if (ev.target.closest('.blipfan')) {
+      const row = ev.target.closest('.row')
+      if (row) { openFan = null; const c = comments.find((x) => x.id === row.dataset.id); if (c) { goTo(c); tab = 'comments'; renderList() } }
+      return
+    }
     const blip = ev.target.closest('.blip')
-    if (blip) { const c = comments.find((x) => x.id === blip.dataset.id); if (c) { goTo(c); tab = 'comments'; renderList() } return }
+    if (blip) { const c = comments.find((x) => x.id === blip.dataset.id); if (c) { goTo(c); tab = 'comments'; renderList() } }
+  })
+  // Press anywhere on the bar to go to that moment, and drag along it to scrub.
+  let scrub = null
+  const scrubTo = (clientX) => {
     const r = $('blipline').getBoundingClientRect()
     const total = (videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration : content.video.durationMs / 1000) || 0
+    videoEl.currentTime = Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * total
+    renderBlips()
+  }
+  $('blipline').addEventListener('pointerdown', (ev) => {
+    if (!videoEl || ev.button !== 0 || ev.target.closest('.blip, .blipfan')) return
     if (unsavedBubble() && !confirm('Move to another moment? Your comment here hasn\'t been posted and will be cleared.')) return
-    discardMarks()
+    if (marks.length || bubbleOpen()) discardMarks()
+    closePeek()
     videoEl.pause()
-    videoEl.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * total
+    scrub = ev.pointerId
+    $('blipline').setPointerCapture(ev.pointerId)
+    $('blipline').classList.add('scrubbing')
+    scrubTo(ev.clientX)
   })
+  $('blipline').addEventListener('pointermove', (ev) => { if (scrub === ev.pointerId) scrubTo(ev.clientX) })
+  const endScrub = () => { scrub = null; $('blipline').classList.remove('scrubbing') }
+  $('blipline').addEventListener('pointerup', endScrub)
+  $('blipline').addEventListener('pointercancel', endScrub)
+  $('frame').addEventListener('scroll', () => { if (videoEl) renderBlips() })
+  window.addEventListener('resize', () => { if (videoEl) renderBlips() })
 
   function renderFrameMode() {
     if (picture) {
@@ -1133,7 +1266,7 @@
   /** The comments drawn on a picture, in number order (what ‹ › steps through). */
   function drawnComments() {
     const nums = numbers()
-    return comments.filter((c) => !c.parentId && c.kind !== 'done' && c.shapes && c.shapes.length && c.target.kind !== 'guide').sort((a, b) => nums.get(a.id) - nums.get(b.id))
+    return comments.filter((c) => !c.parentId && c.kind !== 'done' && c.shapes && c.shapes.length && c.target.kind !== 'guide' && (showHidden || !isHidden(c) || c.id === selectedComment)).sort((a, b) => nums.get(a.id) - nums.get(b.id))
   }
   function openPeek(id) {
     const c = comments.find((x) => x.id === id)
@@ -1153,7 +1286,8 @@
       `<div class="thread"><span class="hint" style="font-size:12px;margin-top:-6px">${esc(when(c.createdAt))}</span>` +
       (c.text ? `<p>${esc(c.text)}</p>` : '') +
       (c.suggestion ? `<div class="suggest"><b>Suggested wording</b>${esc(c.suggestion)}</div>` : '') +
-      replies.map((r) => `<div class="reply-item${r.fromOwner ? ' owner' : ''}"><div class="meta"><b>${esc(r.author)}</b>${r.fromOwner ? '<span class="badge">Guide author</span>' : ''}<span>${esc(when(r.createdAt))}</span></div><p>${esc(r.text)}</p></div>`).join('') +
+      `<div>${thumbsHtml(c)}</div>` +
+      replies.map((r) => `<div class="reply-item${r.fromOwner ? ' owner' : ''}"><div class="meta"><b>${esc(r.author)}</b>${r.fromOwner ? '<span class="badge">Guide author</span>' : ''}<span>${esc(when(r.createdAt))}</span></div><p>${esc(r.text)}</p>${thumbsHtml(r)}</div>`).join('') +
       `</div>` +
       `<form class="peekreply"><textarea maxlength="5000" placeholder="Reply…" aria-label="Your reply"></textarea>` +
       `<div class="row" style="justify-content:flex-end"><span class="hint state" style="flex:1;font-size:12px"></span><button class="primary" type="submit">Reply</button></div></form>`
@@ -1216,6 +1350,21 @@
   const undo = () => restore(undoStack, redoStack)
   const redo = () => restore(redoStack, undoStack)
 
+  // Video: ← and → move one frame (Shift: one second). Caught early so the video's own controls don't jump 5 seconds instead.
+  const FRAME_S = 1 / 30
+  window.addEventListener('keydown', (e) => {
+    if (mode !== 'video' || !videoEl || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    if (e.target.closest && e.target.closest('input, textarea, select, dialog, [contenteditable]')) return
+    e.preventDefault(); e.stopPropagation()
+    if (unsavedBubble() && !confirm('Move to another moment? Your comment here hasn\'t been posted and will be cleared.')) return
+    if (marks.length || bubbleOpen()) discardMarks()
+    closePeek()
+    videoEl.pause()
+    const total = videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration : (content.video.durationMs || 0) / 1000
+    const by = (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : FRAME_S)
+    videoEl.currentTime = Math.max(0, Math.min(total || Infinity, videoEl.currentTime + by))
+  }, true)
   document.addEventListener('keydown', (e) => {
     const typing = e.target.closest && e.target.closest('input, textarea, dialog')
     const ctrl = e.ctrlKey || e.metaKey
@@ -1255,6 +1404,7 @@
     if (!showComments) return []
     return comments.filter((c) => {
       if (!c.shapes || !c.shapes.length || c.parentId) return false
+      if (isHidden(c) && !showHidden && c.id !== selectedComment) return false
       if (mode === 'steps') return c.target.kind === 'step' && entry() && c.target.entryId === entry().id
       return c.target.kind === 'video' && videoEl && Math.abs(c.target.ms - videoEl.currentTime * 1000) < 600
     })
@@ -1459,6 +1609,69 @@
     comments.push({ ...comment, createdAt: (saved && saved.createdAt) || new Date().toISOString() })
   }
 
+  // --- Thumbs up and down ---
+  const THUMB_UP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>'
+  const THUMB_DOWN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>'
+  const listNames = (n) => n.length <= 1 ? (n[0] || '') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`
+
+  /** The thumbs for a comment or reply. On your own comments they only show how many others gave. */
+  function thumbsHtml(c) {
+    const own = mine.has(c.id)
+    const list = c.reactions || []
+    const button = (value) => {
+      const who = list.filter((r) => r.value === value).map((r) => (r.fromOwner ? `${r.name} (guide author)` : r.name))
+      if (own && !who.length) return ''
+      const label = value === 1 ? 'Like' : 'Dislike'
+      const on = myThumbs[c.id] === value
+      const title = who.length ? `${listNames(who)} ${value === 1 ? 'liked' : 'disliked'} this` : label
+      return `<button type="button" class="thumb${on ? ' on' : ''}" data-id="${esc(c.id)}" data-value="${value}" aria-pressed="${on}" ` +
+        `aria-label="${label}${who.length ? ` (${who.length})` : ''}" title="${esc(on ? `${title}. Press again to take yours back.` : title)}"${own ? ' disabled' : ''}>` +
+        `${value === 1 ? THUMB_UP : THUMB_DOWN}${who.length ? `<span>${who.length}</span>` : ''}</button>`
+    }
+    return `<span class="thumbs">${button(1)}${button(-1)}</span>`
+  }
+
+  async function react(id, value) {
+    const c = comments.find((x) => x.id === id)
+    if (!c || mine.has(id)) return
+    if (!me) { afterName = () => react(id, value); return askName() }
+    const before = myThumbs[id] || 0
+    const next = before === value ? 0 : value
+    const old = c.reactions
+    // Shown straight away: this browser's earlier thumb (under its name) out, the new one in.
+    const list = [...(c.reactions || [])]
+    if (before) {
+      const i = list.findIndex((r) => !r.fromOwner && r.value === before && r.name === me)
+      if (i >= 0) list.splice(i, 1)
+    }
+    if (next) list.push({ name: me, value: next })
+    const setMine = (v) => { if (v) myThumbs[id] = v; else delete myThumbs[id]; store.set(thumbsKey, JSON.stringify(myThumbs)) }
+    c.reactions = list
+    setMine(next)
+    redrawThumbs()
+    try {
+      await rpc('react_review_comment', { review: reviewId, secret, comment: id, voter_key: editKey, voter_name: me, reaction: next })
+      void reload()
+    } catch (err) {
+      c.reactions = old
+      setMine(before)
+      redrawThumbs()
+      alert(`That didn't go through: ${err.message}`)
+    }
+  }
+
+  function redrawThumbs() {
+    renderList()
+    if (peekId) openPeek(peekId)
+  }
+
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('.thumb')
+    if (!b || b.disabled) return
+    e.stopPropagation()
+    void react(b.dataset.id, Number(b.dataset.value))
+  }, true)
+
   async function removeComment(c) {
     if (!confirm('Delete this comment? Its replies go too.')) return
     try {
@@ -1487,12 +1700,14 @@
 
   function renderList() {
     updateSendNudge()
-    const top = comments.filter((c) => !c.parentId && c.kind !== 'done')
+    const all = comments.filter((c) => !c.parentId && c.kind !== 'done')
+    const hiddenCount = all.filter(isHidden).length
+    const top = all.filter((c) => showHidden || !isHidden(c))
     $('tabSteps').hidden = !hasSteps()
     if (!hasSteps()) tab = 'comments'
     $('tabSteps').className = tab === 'steps' ? 'on' : ''
     $('tabComments').className = tab === 'comments' ? 'on' : ''
-    $('tabComments').textContent = `Comments (${top.length})`
+    $('tabComments').textContent = `Comments (${all.length - hiddenCount})`
     const list = $('list')
     list.innerHTML = ''
     if (tab === 'steps') {
@@ -1508,12 +1723,19 @@
       })
       return
     }
-    if (top.length === 0) {
+    if (all.length === 0) {
       list.innerHTML = '<p class="hint" style="padding: 8px">No comments yet. Click anywhere on the picture to leave the first one.</p>'
       return
     }
     for (const c of [...top].sort((a, b) => order(a) - order(b) || String(a.createdAt).localeCompare(String(b.createdAt)))) {
       list.appendChild(commentEl(c))
+    }
+    if (hiddenCount) {
+      const bar = document.createElement('div')
+      bar.className = 'hiddenbar'
+      bar.innerHTML = `<span>🙈 ${hiddenCount} hidden (dealt with)</span>·<button class="link" type="button">${showHidden ? 'Hide Them Again' : 'Show'}</button>`
+      bar.querySelector('button').onclick = () => { showHidden = !showHidden; renderList(); renderOverlay(); if (videoEl) renderBlips() }
+      list.appendChild(bar)
     }
     // Scrolls the list only (scrolling the page would pull a phone away from the picture).
     const on = list.querySelector('.comment.on')
@@ -1525,7 +1747,7 @@
 
   function commentEl(c) {
     const div = document.createElement('div')
-    div.className = 'comment' + (selectedComment === c.id ? ' on' : '')
+    div.className = 'comment' + (selectedComment === c.id ? ' on' : '') + (isHidden(c) ? ' muted' : '')
     const replies = comments.filter((r) => r.parentId === c.id && r.kind !== 'done')
     const deletable = (x) => mine.has(x.id) ? ` · <button class="link delete" type="button" data-id="${esc(x.id)}">Delete</button>` : ''
     div.innerHTML =
@@ -1533,10 +1755,17 @@
       `<span class="where" title="Show it">${esc(shortName(c.target))}${c.shapes && c.shapes.length ? ' ✎' : ''}</span></div>` +
       (c.text ? `<p>${esc(c.text)}</p>` : '') +
       (c.suggestion ? `<div class="suggest"><b>Suggested wording</b>${esc(c.suggestion)}</div>` : '') +
-      (replies.length ? `<div class="replies">${replies.map((r) => `<div class="comment${r.fromOwner ? ' owner' : ''}"><div class="meta"><span class="who">${esc(r.author)}${r.fromOwner ? ' <span class="badge">Guide author</span>' : ''}</span><span>${esc(when(r.createdAt))}</span>${deletable(r)}</div><p>${esc(r.text)}</p></div>`).join('')}</div>` : '') +
-      `<button class="link reply" type="button">Reply</button>${deletable(c)}`
+      (replies.length ? `<div class="replies">${replies.map((r) => `<div class="comment${r.fromOwner ? ' owner' : ''}"><div class="meta"><span class="who">${esc(r.author)}${r.fromOwner ? ' <span class="badge">Guide author</span>' : ''}</span><span>${esc(when(r.createdAt))}</span>${deletable(r)}${thumbsHtml(r)}</div><p>${esc(r.text)}</p></div>`).join('')}</div>` : '') +
+      `<div class="actions">${thumbsHtml(c)}<button class="link reply" type="button">Reply</button> · <button class="link hide" type="button" title="${isHidden(c) ? 'Show this comment again, for everyone' : 'Dealt with? Hide it for everyone, to keep the list tidy. Nothing is deleted.'}">${isHidden(c) ? 'Unhide' : 'Hide'}</button>${deletable(c)}</div>`
     div.querySelector('.where').onclick = () => goTo(c)
+    // The coloured number, or anywhere on the comment, goes there too (the same as its dot under the video), except
+    // its own buttons, links and reply box. Not while selecting text to copy it.
+    div.addEventListener('click', (ev) => {
+      if (ev.target.closest('button, a, input, textarea, form, .where') || String(getSelection() || '')) return
+      goTo(c)
+    })
     div.querySelector('.reply').onclick = (ev) => { ev.stopPropagation(); replyingTo = c.id; renderList() }
+    div.querySelector('.hide').onclick = (ev) => { ev.stopPropagation(); setHidden(c, !isHidden(c)) }
     div.querySelectorAll('.delete').forEach((b) => {
       b.onclick = (ev) => { ev.stopPropagation(); const x = comments.find((y) => y.id === b.dataset.id); if (x) void removeComment(x) }
     })
